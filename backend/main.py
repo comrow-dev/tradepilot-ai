@@ -73,9 +73,7 @@ def alpha_vantage(function, **params):
 
     return data
 
-
-@app.get("/api/scan")
-def scan():
+def scan_market():
     data = alpha_vantage("TOP_GAINERS_LOSERS")
 
     candidates = []
@@ -154,8 +152,6 @@ def scan():
         "count": len(candidates),
         "results": candidates[:50]
     }
-
-
 
 @app.get("/api/intraday/{symbol}")
 def intraday(
