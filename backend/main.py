@@ -79,16 +79,35 @@ def alpha_vantage(function, **params):
     return data
 
 def scan_market():
+    def scan_market():
     global MARKET_CACHE, MARKET_CACHE_TIME
 
     now = datetime.now(timezone.utc)
 
+    # Använd cache i 15 minuter
     if MARKET_CACHE is not None and MARKET_CACHE_TIME is not None:
         age = (now - MARKET_CACHE_TIME).total_seconds()
-        if age < 300:
+
+        if age < 900:
             return MARKET_CACHE
 
+    # Hämta marknadsdata
     data = alpha_vantage("TOP_GAINERS_LOSERS")
+
+    # Kontrollera om Alpha Vantage skickar rate-limit
+    if "Information" in data:
+        return {
+            "count": 0,
+            "results": [],
+            "error": data["Information"]
+        }
+
+    if "Note" in data:
+        return {
+            "count": 0,
+            "results": [],
+            "error": data["Note"]
+        }
 
     candidates = []
 
@@ -122,7 +141,7 @@ def scan_market():
             elif volume >= 100_000:
                 score += 8
 
-            # Begränsa till 0–100
+            # Begränsa till 0-100
             score = max(0, min(100, score))
 
             # Signal
@@ -157,7 +176,7 @@ def scan_market():
         except (TypeError, ValueError):
             continue
 
-        candidates.sort(
+    candidates.sort(
         key=lambda x: x["score"],
         reverse=True
     )
@@ -167,12 +186,12 @@ def scan_market():
         "results": candidates[:50]
     }
 
+    # Spara resultatet i cache
     MARKET_CACHE = result
     MARKET_CACHE_TIME = now
 
     return result
-
-
+    
 @app.get("/api/intraday/{symbol}")
 def intraday(
     symbol: str,
