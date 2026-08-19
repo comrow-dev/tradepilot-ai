@@ -89,7 +89,7 @@ def scan():
         except (TypeError, ValueError):
             continue
 
-        if 10 <= change <= 30:
+        if 5 <= change <= 30:
             candidate = {
                 "symbol": stock.get("ticker"),
                 "price": stock.get("price"),
@@ -145,7 +145,7 @@ def scan():
         except ValueError:
             continue
 
-        if 10 <= change <= 30:
+        if 5 <= change <= 30:
             candidates.append(
                 {
                     "symbol": stock.get("ticker"),
