@@ -77,6 +77,7 @@ def alpha_vantage(function, **params):
 @app.get("/api/scan")
 def scan():
     data = alpha_vantage("TOP_GAINERS_LOSERS")
+    return data
 
     print("ALPHA DATA:", data)
 
