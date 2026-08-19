@@ -80,36 +80,111 @@ def scan():
 
     candidates = []
 
-    for stock in data.get("top_gainers", []):
+    # Hämta både vinnare och förlorare
+    stocks = (
+        data.get("top_gainers", [])
+        + data.get("top_losers", [])
+    )
+
+    for stock in stocks:
         try:
             change = float(
                 str(stock.get("change_percentage", "0"))
                 .replace("%", "")
             )
+
+            price = float(stock.get("price") or 0)
+            volume = float(stock.get("volume") or 0)
+
+            if price <= 0:
+                continue
+
+            # -------------------------
+            # TRADEPILOT AI-SCORE
+            # -------------------------
+
+            score = 50
+
+            # Momentum
+            if change >= 10:
+                score += 20
+            elif change >= 5:
+                score += 12
+            elif change >= 2:
+                score += 6
+            elif change < 0:
+                score -= 15
+
+            # Volym
+            if volume >= 5_000_000:
+                score += 15
+            elif volume >= 1_000_000:
+                score += 10
+            elif volume >= 250_000:
+                score += 5
+
+            # Begränsa score
+            score = max(0, min(100, score))
+
+            # -------------------------
+            # SIGNAL
+            # -------------------------
+
+            if score >= 80:
+                signal = "KÖP"
+            elif score >= 65:
+                signal = "BEVAKA"
+            elif score <= 35:
+                signal = "SÄLJ"
+            else:
+                signal = "AVVAKTA"
+
+            # -------------------------
+            # KÖP / MÅL / STOP
+            # -------------------------
+
+            if signal == "KÖP":
+                buy_price = price
+                target_price = round(price * 1.10, 2)
+                stop_loss = round(price * 0.95, 2)
+
+            elif signal == "BEVAKA":
+                buy_price = round(price * 0.98, 2)
+                target_price = round(price * 1.08, 2)
+                stop_loss = round(price * 0.94, 2)
+
+            else:
+                buy_price = price
+                target_price = round(price * 1.05, 2)
+                stop_loss = round(price * 0.95, 2)
+
+            candidate = {
+                "symbol": stock.get("ticker"),
+                "price": price,
+                "change_pct": change,
+                "volume": volume,
+                "score": score,
+                "signal": signal,
+                "buy_price": buy_price,
+                "target_price": target_price,
+                "stop_loss": stop_loss
+            }
+
+            candidates.append(candidate)
+
         except (TypeError, ValueError):
             continue
 
-        if 5 <= change <= 30:
-            candidate = {
-                "symbol": stock.get("ticker"),
-                "price": stock.get("price"),
-                "change_pct": change,
-                "volume": stock.get("volume"),
-            }
-
-            candidates.append(
-                analyze(candidate)
-            )
-
+    # Bäst först
     candidates.sort(
         key=lambda x: x["score"],
-        reverse=True,
+        reverse=True
     )
 
     return {
         "count": len(candidates),
-        "results": candidates[:50],
-    }
+        "results": candidates[:50]
+            }
 
 
 @app.get("/api/intraday/{symbol}")
