@@ -176,39 +176,7 @@ def gainers():
 
 
 @app.get("/api/scan")
-def scan():
-    data = alpha_vantage("TOP_GAINERS_LOSERS")
 
-    candidates = []
-
-    for stock in data.get("top_gainers", []):
-        try:
-            change = float(
-                str(stock.get("change_percentage", "0"))
-                .replace("%", "")
-            )
-        except ValueError:
-            continue
-
-        if 5 <= change <= 30:
-            candidates.append(
-                {
-                    "symbol": stock.get("ticker"),
-                    "price": stock.get("price"),
-                    "change_pct": change,
-                    "volume": stock.get("volume"),
-                }
-            )
-
-    candidates.sort(
-        key=lambda x: x["change_pct"],
-        reverse=True,
-    )
-
-    return {
-        "count": len(candidates),
-        "results": candidates[:50],
-    }
 
 @app.get("/api/auto-scan")
 def auto_scan():
@@ -226,7 +194,6 @@ def auto_scan():
             "error": str(error),
             "results": [],
         }
-
 
 @app.get("/api/scanner-state")
 def scanner_state():
