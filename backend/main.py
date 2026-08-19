@@ -6,6 +6,7 @@ from typing import Optional
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+from scanner_state import get_state, save_scan
 from auto_scan import scan_market
 from scoring import analyze
 
@@ -166,11 +167,30 @@ def scan():
 
 @app.get("/api/auto-scan")
 def auto_scan():
-    return scan_market()
+    try:
+        result = scan_market()
+        save_scan(
+            result.get("results", []),
+            result.get("error")
+        )
+        return result
+    except Exception as error:
+        save_scan([], str(error))
+        return {
+            "ok": False,
+            "error": str(error),
+            "results": [],
+        }
+
+
+@app.get("/api/scanner-state")
+def scanner_state():
+    return get_state()
+
+
 class ChatRequest(BaseModel):
     message: str
     context: Optional[dict] = None
-
 
 @app.post("/api/chat")
 def chat(request: ChatRequest):
