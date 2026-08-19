@@ -230,6 +230,9 @@ Nya listningar · snabba aktier · hög volym · momentum
 <button class="scan" onclick="scan()">
  🔎 Skanna marknaden
 </button>
+ <div id="autoScanStatus" style="margin-top:12px;font-size:11px;color:#8292b1">
+🔄 Auto Scan: PÅ · Startar...
+ </div>
 <div id="autoScanStatus" style="margin-top:12px;font-size:11px;color:#8292b1">
 🔄 Auto Scan: PÅ · Var 3:e minut
 </div>
@@ -473,6 +476,47 @@ setInterval(
     autoScan,
     3 * 60 * 1000
 );
+ let autoScanning = false;
+
+async function autoScan() {
+    if (autoScanning) return;
+
+    autoScanning = true;
+
+    const status = document.getElementById("autoScanStatus");
+
+    if (status) {
+        status.textContent = "🔄 Auto Scan: skannar...";
+    }
+
+    try {
+        await scan();
+
+        const next =
+            new Date(Date.now() + 3 * 60 * 1000);
+
+        if (status) {
+            status.textContent =
+                "🟢 Auto Scan: PÅ · Nästa scan " +
+                next.toLocaleTimeString("sv-SE", {
+                    hour: "2-digit",
+                    minute: "2-digit"
+                });
+        }
+
+    } catch (error) {
+        if (status) {
+            status.textContent =
+                "⚠️ Auto Scan kunde inte genomföras";
+        }
+    } finally {
+        autoScanning = false;
+    }
+}
+
+autoScan();
+
+setInterval(autoScan, 180000);
 </script>
 
 </body>
