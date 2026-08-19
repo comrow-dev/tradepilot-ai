@@ -79,7 +79,6 @@ def alpha_vantage(function, **params):
     return data
 
 def scan_market():
-    def scan_market():
     global MARKET_CACHE, MARKET_CACHE_TIME
 
     now = datetime.now(timezone.utc)
