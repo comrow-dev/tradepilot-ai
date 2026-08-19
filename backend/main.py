@@ -157,24 +157,26 @@ def scan_market():
         except (TypeError, ValueError):
             continue
 
-    candidates.sort(
+        candidates.sort(
         key=lambda x: x["score"],
         reverse=True
     )
 
     result = {
-    "count": len(candidates),
-    "results": candidates[:50]
+        "count": len(candidates),
+        "results": candidates[:50]
     }
-MARKET_CACHE = result
-MARKET_CACHE_TIME = now
 
-return result
+    MARKET_CACHE = result
+    MARKET_CACHE_TIME = now
+
+    return result
+
 
 @app.get("/api/intraday/{symbol}")
 def intraday(
     symbol: str,
-    interval: str = "5min",
+    interval: str = "5min"
 ):
     return alpha_vantage(
         "TIME_SERIES_INTRADAY",
