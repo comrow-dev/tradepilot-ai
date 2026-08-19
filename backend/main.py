@@ -77,108 +77,74 @@ def alpha_vantage(function, **params):
 @app.get("/api/scan")
 def scan():
     data = alpha_vantage("TOP_GAINERS_LOSERS")
-    return data
-
-    print("ALPHA DATA:", data)
 
     candidates = []
 
-    # Hämta både vinnare och förlorare
-    stocks = (
-        data.get("top_gainers", [])
-        + data.get("top_losers", [])
-    )
-
-    for stock in stocks:
+    for stock in data.get("top_gainers", []):
         try:
             change = float(
                 str(stock.get("change_percentage", "0"))
                 .replace("%", "")
             )
 
-            price = float(stock.get("price") or 0)
-            volume = float(stock.get("volume") or 0)
+            price = float(stock.get("price", 0))
+            volume = int(float(stock.get("volume", 0)))
 
             if price <= 0:
                 continue
 
-            # -------------------------
-            # TRADEPILOT AI-SCORE
-            # -------------------------
-
+            # Grundpoäng
             score = 50
 
             # Momentum
-            if change >= 10:
-                score += 20
-            elif change >= 5:
-                score += 12
+            if change >= 5:
+                score += 15
             elif change >= 2:
-                score += 6
+                score += 8
             elif change < 0:
-                score -= 15
+                score -= 10
 
             # Volym
-            if volume >= 5_000_000:
+            if volume >= 1_000_000:
                 score += 15
-            elif volume >= 1_000_000:
-                score += 10
-            elif volume >= 250_000:
-                score += 5
+            elif volume >= 100_000:
+                score += 8
 
-            # Begränsa score
+            # Begränsa till 0–100
             score = max(0, min(100, score))
 
-            # -------------------------
-            # SIGNAL
-            # -------------------------
-
+            # Signal
             if score >= 80:
                 signal = "KÖP"
             elif score >= 65:
-                signal = "BEVAKA"
-            elif score <= 35:
-                signal = "SÄLJ"
-            else:
                 signal = "AVVAKTA"
-
-            # -------------------------
-            # KÖP / MÅL / STOP
-            # -------------------------
-
-            if signal == "KÖP":
-                buy_price = price
-                target_price = round(price * 1.10, 2)
-                stop_loss = round(price * 0.95, 2)
-
-            elif signal == "BEVAKA":
-                buy_price = round(price * 0.98, 2)
-                target_price = round(price * 1.08, 2)
-                stop_loss = round(price * 0.94, 2)
-
             else:
-                buy_price = price
-                target_price = round(price * 1.05, 2)
-                stop_loss = round(price * 0.95, 2)
+                signal = "UNDVIK"
 
-            candidate = {
+            # Risknivåer
+            buy_low = round(price * 0.98, 2)
+            buy_high = round(price * 1.01, 2)
+            target = round(price * 1.10, 2)
+            stop_loss = round(price * 0.95, 2)
+
+            candidates.append({
                 "symbol": stock.get("ticker"),
                 "price": price,
                 "change_pct": change,
                 "volume": volume,
                 "score": score,
                 "signal": signal,
-                "buy_price": buy_price,
-                "target_price": target_price,
+                "buy_zone": {
+                    "low": buy_low,
+                    "high": buy_high
+                },
+                "target": target,
                 "stop_loss": stop_loss
-            }
-
-            candidates.append(candidate)
+            })
 
         except (TypeError, ValueError):
             continue
 
-    # Bäst först
     candidates.sort(
         key=lambda x: x["score"],
         reverse=True
@@ -187,7 +153,8 @@ def scan():
     return {
         "count": len(candidates),
         "results": candidates[:50]
-            }
+    }
+
 
 
 @app.get("/api/intraday/{symbol}")
