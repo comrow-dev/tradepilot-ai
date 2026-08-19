@@ -78,6 +78,8 @@ def alpha_vantage(function, **params):
 def scan():
     data = alpha_vantage("TOP_GAINERS_LOSERS")
 
+    print("ALPHA DATA:", data)
+
     candidates = []
 
     # Hämta både vinnare och förlorare
