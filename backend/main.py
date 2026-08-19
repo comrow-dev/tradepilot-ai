@@ -6,6 +6,7 @@ from typing import Optional
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+from auto_scan import scan_market
 from scoring import analyze
 
 app = FastAPI(title="TradePilot AI")
@@ -163,7 +164,9 @@ def scan():
         "results": candidates[:50],
     }
 
-
+@app.get("/api/auto-scan")
+def auto_scan():
+    return scan_market()
 class ChatRequest(BaseModel):
     message: str
     context: Optional[dict] = None
