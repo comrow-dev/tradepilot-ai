@@ -12,6 +12,9 @@ from scoring import analyze
 
 app = FastAPI(title="TradePilot AI")
 
+MARKET_CACHE = None
+MARKET_CACHE_TIME = None
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -21,7 +24,9 @@ app.add_middleware(
 
 ALPHA_VANTAGE_KEY = os.getenv("ALPHAVANTAGE_API_KEY")
 OPENAI_KEY = os.getenv("OPENAI_API_KEY")
+
 @app.get("/")
+
 def home():
     return {
         "app": "TradePilot AI",
@@ -74,6 +79,15 @@ def alpha_vantage(function, **params):
     return data
 
 def scan_market():
+    global MARKET_CACHE, MARKET_CACHE_TIME
+
+    now = datetime.now(timezone.utc)
+
+    if MARKET_CACHE is not None and MARKET_CACHE_TIME is not None:
+        age = (now - MARKET_CACHE_TIME).total_seconds()
+        if age < 300:
+            return MARKET_CACHE
+
     data = alpha_vantage("TOP_GAINERS_LOSERS")
 
     candidates = []
@@ -148,10 +162,14 @@ def scan_market():
         reverse=True
     )
 
-    return {
-        "count": len(candidates),
-        "results": candidates[:50]
+    result = {
+    "count": len(candidates),
+    "results": candidates[:50]
     }
+MARKET_CACHE = result
+MARKET_CACHE_TIME = now
+
+return result
 
 @app.get("/api/intraday/{symbol}")
 def intraday(
