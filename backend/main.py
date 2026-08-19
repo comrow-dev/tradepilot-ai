@@ -6,6 +6,7 @@ from typing import Optional
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+from scoring import analyze
 
 app = FastAPI(title="TradePilot AI")
 
@@ -71,12 +72,42 @@ def alpha_vantage(function, **params):
     return data
 
 
-@app.get("/api/quote/{symbol}")
-def quote(symbol: str):
-    return alpha_vantage(
-        "GLOBAL_QUOTE",
-        symbol=symbol.upper(),
+@app.get("/api/scan")
+def scan():
+    data = alpha_vantage("TOP_GAINERS_LOSERS")
+
+    candidates = []
+
+    for stock in data.get("top_gainers", []):
+        try:
+            change = float(
+                str(stock.get("change_percentage", "0"))
+                .replace("%", "")
+            )
+        except (TypeError, ValueError):
+            continue
+
+        if 10 <= change <= 30:
+            candidate = {
+                "symbol": stock.get("ticker"),
+                "price": stock.get("price"),
+                "change_pct": change,
+                "volume": stock.get("volume"),
+            }
+
+            candidates.append(
+                analyze(candidate)
+            )
+
+    candidates.sort(
+        key=lambda x: x["score"],
+        reverse=True,
     )
+
+    return {
+        "count": len(candidates),
+        "results": candidates[:50],
+    }
 
 
 @app.get("/api/intraday/{symbol}")
