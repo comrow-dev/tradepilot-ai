@@ -77,7 +77,6 @@ def alpha_vantage(function, **params):
         )
 
     return data
-
 def scan_market():
     global MARKET_CACHE, MARKET_CACHE_TIME
 
@@ -90,30 +89,19 @@ def scan_market():
         if age < 900:
             return MARKET_CACHE
 
-    # Hämta marknadsdata
-    data = alpha_vantage("TOP_GAINERS_LOSERS")
-
-    # Kontrollera om Alpha Vantage skickar rate-limit
-    if "Information" in data:
-        return {
-            "count": 0,
-            "results": [],
-            "error": data["Information"]
-        }
-
-    if "Note" in data:
-        return {
-            "count": 0,
-            "results": [],
-            "error": data["Note"]
-        }
+    # Hämta marknadens vinnare/förlorare från Twelve Data
+    data = twelve_data(
+        "market_movers",
+        direction="gainers",
+        exchange="NASDAQ"
+    )
 
     candidates = []
 
-    for stock in data.get("top_gainers", []):
+    for stock in data.get("gainers", []):
         try:
             change = float(
-                str(stock.get("change_percentage", "0"))
+                str(stock.get("percent_change", 0))
                 .replace("%", "")
             )
 
@@ -123,7 +111,6 @@ def scan_market():
             if price <= 0:
                 continue
 
-            # Grundpoäng
             score = 50
 
             # Momentum
@@ -140,10 +127,8 @@ def scan_market():
             elif volume >= 100_000:
                 score += 8
 
-            # Begränsa till 0-100
             score = max(0, min(100, score))
 
-            # Signal
             if score >= 80:
                 signal = "KÖP"
             elif score >= 65:
@@ -151,14 +136,13 @@ def scan_market():
             else:
                 signal = "UNDVIK"
 
-            # Risknivåer
             buy_low = round(price * 0.98, 2)
             buy_high = round(price * 1.01, 2)
             target = round(price * 1.10, 2)
             stop_loss = round(price * 0.95, 2)
 
             candidates.append({
-                "symbol": stock.get("ticker"),
+                "symbol": stock.get("symbol"),
                 "price": price,
                 "change_pct": change,
                 "volume": volume,
@@ -185,7 +169,6 @@ def scan_market():
         "results": candidates[:50]
     }
 
-    # Spara resultatet i cache
     MARKET_CACHE = result
     MARKET_CACHE_TIME = now
 
@@ -196,13 +179,13 @@ def intraday(
     symbol: str,
     interval: str = "5min"
 ):
-    return alpha_vantage(
-        "TIME_SERIES_INTRADAY",
-        symbol=symbol.upper(),
-        interval=interval,
-        outputsize="compact",
+    return twelve_data(
+    "time_series",
+    symbol=symbol.upper(),
+    interval=interval,
+    outputsize=100
+        
     )
-
 
 @app.get("/api/gainers")
 def gainers():
