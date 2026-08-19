@@ -18,7 +18,13 @@ app.add_middleware(
 
 ALPHA_VANTAGE_KEY = os.getenv("ALPHAVANTAGE_API_KEY")
 OPENAI_KEY = os.getenv("OPENAI_API_KEY")
-
+@app.get("/")
+def home():
+    return {
+        "app": "TradePilot AI",
+        "status": "online",
+        "message": "TradePilot AI backend fungerar."
+    }
 
 @app.get("/api/health")
 def health():
