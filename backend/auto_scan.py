@@ -41,7 +41,7 @@ def scan_market():
         except (TypeError, ValueError):
             continue
 
-        if 10 <= change <= 30:
+        if 5 <= change <= 30:
             candidate = {
                 "symbol": stock.get("ticker"),
                 "price": stock.get("price"),
