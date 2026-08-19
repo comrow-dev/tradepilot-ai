@@ -174,10 +174,17 @@ def intraday(
 def gainers():
     return alpha_vantage("TOP_GAINERS_LOSERS")
 
-
 @app.get("/api/scan")
-
-
+def scan():
+    try:
+        result = scan_market()
+        return result
+    except Exception as error:
+        return {
+            "ok": False,
+            "error": str(error),
+            "results": []
+        }
 @app.get("/api/auto-scan")
 def auto_scan():
     try:
