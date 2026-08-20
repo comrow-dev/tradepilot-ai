@@ -116,20 +116,20 @@ def scan_market():
     # Hämta quotes i batchar om max 8 aktier
 data = {}
 
-for i in range(0, len(symbols), 8):
-    batch = symbols[i:i + 8]
+    for i in range(0, len(symbols), 8):
+        batch = symbols[i:i + 8]
 
-    batch_data = twelve_data(
-        "quote",
-        symbol=",".join(batch)
-    )
+        batch_data = twelve_data(
+            "quote",
+            symbol=",".join(batch)
+        )
 
-    if isinstance(batch_data, dict):
-        data.update(batch_data)
+        if isinstance(batch_data, dict):
+            data.update(batch_data)
 
     # Twelve Data free: max 8 credits/minut
-    if i + 8 < len(symbols):
-        time.sleep(61)
+        if i + 8 < len(symbols):
+            time.sleep(61)
     
     candidates = []
 
