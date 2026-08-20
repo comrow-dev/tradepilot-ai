@@ -114,9 +114,6 @@ def scan_market():
 
     # Hämta quotes i ett batch-anrop
     # Hämta quotes i batchar om max 8 aktier
-    data = {}
-
-    # Hämta quotes i batchar om max 8 aktier
 data = {}
 
 for i in range(0, len(symbols), 8):
