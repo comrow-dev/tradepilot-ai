@@ -75,32 +75,68 @@ def scan_market():
 
     now = datetime.now(timezone.utc)
 
-    # Använd cache i 15 minuter
+    # Cache i 15 minuter
     if MARKET_CACHE is not None and MARKET_CACHE_TIME is not None:
         age = (now - MARKET_CACHE_TIME).total_seconds()
 
         if age < 900:
             return MARKET_CACHE
 
-    # Hämta marknadens vinnare/förlorare från Twelve Data
+    # Aktier som TradePilot ska analysera
+    symbols = [
+        "AAPL",
+        "MSFT",
+        "NVDA",
+        "AMZN",
+        "META",
+        "GOOGL",
+        "TSLA",
+        "AMD",
+        "AVGO",
+        "NFLX",
+        "JPM",
+        "V",
+        "MA",
+        "COST",
+        "WMT",
+        "ORCL",
+        "CRM",
+        "ADBE",
+        "QCOM",
+        "INTC",
+        "MU",
+        "PLTR",
+        "COIN",
+        "UBER",
+        "SHOP"
+    ]
+
+    # Hämta quotes i ett batch-anrop
     data = twelve_data(
-    "market_movers/stocks",
-    direction="gainers",
-    country="USA",
-    outputsize=50
+        "quote",
+        symbol=",".join(symbols)
     )
 
     candidates = []
 
-    for stock in data.get("gainers", []):
+    for symbol in symbols:
         try:
+            stock = data.get(symbol)
+
+            if not stock or stock.get("status") == "error":
+                continue
+
             change = float(
-                str(stock.get("percent_change", 0))
-                .replace("%", "")
+                stock.get("percent_change", 0)
             )
 
-            price = float(stock.get("price", 0))
-            volume = int(float(stock.get("volume", 0)))
+            price = float(
+                stock.get("close", 0)
+            )
+
+            volume = int(
+                float(stock.get("volume", 0))
+            )
 
             if price <= 0:
                 continue
@@ -121,8 +157,10 @@ def scan_market():
             elif volume >= 100_000:
                 score += 8
 
+            # Begränsa score till 0-100
             score = max(0, min(100, score))
 
+            # Signal
             if score >= 80:
                 signal = "KÖP"
             elif score >= 65:
@@ -130,13 +168,14 @@ def scan_market():
             else:
                 signal = "UNDVIK"
 
+            # Risknivåer
             buy_low = round(price * 0.98, 2)
             buy_high = round(price * 1.01, 2)
             target = round(price * 1.10, 2)
             stop_loss = round(price * 0.95, 2)
 
             candidates.append({
-                "symbol": stock.get("symbol"),
+                "symbol": symbol,
                 "price": price,
                 "change_pct": change,
                 "volume": volume,
@@ -153,6 +192,7 @@ def scan_market():
         except (TypeError, ValueError):
             continue
 
+    # Bästa aktierna först
     candidates.sort(
         key=lambda x: x["score"],
         reverse=True
