@@ -1,4 +1,5 @@
 import os
+import time
 import requests
 from datetime import datetime, timezone
 from typing import Optional
@@ -115,8 +116,11 @@ def scan_market():
     # Hämta quotes i batchar om max 8 aktier
     data = {}
 
-    for i in range(0, len(symbols), 8):
-        batch = symbols[i:i + 8]
+    # Hämta quotes i batchar om max 8 aktier
+data = {}
+
+for i in range(0, len(symbols), 8):
+    batch = symbols[i:i + 8]
 
     batch_data = twelve_data(
         "quote",
@@ -125,6 +129,10 @@ def scan_market():
 
     if isinstance(batch_data, dict):
         data.update(batch_data)
+
+    # Twelve Data free: max 8 credits/minut
+    if i + 8 < len(symbols):
+        time.sleep(61)
     
     candidates = []
 
