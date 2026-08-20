@@ -116,7 +116,7 @@ def scan_market():
     data = {}
 
     for i in range(0, len(symbols), 8):
-    batch = symbols[i:i + 8]
+        batch = symbols[i:i + 8]
 
     batch_data = twelve_data(
         "quote",
