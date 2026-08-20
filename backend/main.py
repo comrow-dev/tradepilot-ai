@@ -22,7 +22,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-ALPHA_VANTAGE_KEY = os.getenv("ALPHAVANTAGE_API_KEY")
+TWELVE_DATA_KEY = os.getenv("TWELVE_DATA_API_KEY")
 OPENAI_KEY = os.getenv("OPENAI_API_KEY")
 
 @app.get("/")
@@ -38,42 +38,35 @@ def home():
 def health():
     return {
         "ok": True,
-        "market_data": bool(ALPHA_VANTAGE_KEY),
+        "market_data": bool(TWELVE_DATA_KEY),
         "ai": bool(OPENAI_KEY),
         "time": datetime.now(timezone.utc).isoformat(),
     }
 
 
-def alpha_vantage(function, **params):
-    if not ALPHA_VANTAGE_KEY:
+def twelve_data(endpoint, **params):
+    if not TWELVE_DATA_KEY:
         raise HTTPException(
             status_code=503,
-            detail="ALPHAVANTAGE_API_KEY saknas.",
+            detail="TWELVE_DATA_API_KEY saknas."
         )
 
-    params["function"] = function
-    params["apikey"] = ALPHA_VANTAGE_KEY
+    params["apikey"] = TWELVE_DATA_KEY
 
     response = requests.get(
-        "https://www.alphavantage.co/query",
+        f"https://api.twelvedata.com/{endpoint}",
         params=params,
-        timeout=20,
+        timeout=20
     )
 
     response.raise_for_status()
 
     data = response.json()
 
-    if "Error Message" in data:
+    if data.get("status") == "error":
         raise HTTPException(
             status_code=502,
-            detail=data["Error Message"],
-        )
-
-    if "Note" in data:
-        raise HTTPException(
-            status_code=429,
-            detail=data["Note"],
+            detail=data.get("message", "Twelve Data API-fel")
         )
 
     return data
