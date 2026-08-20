@@ -133,7 +133,7 @@ for i in range(0, len(symbols), 8):
     
     candidates = []
 
-    for symbol in symbols:
+for symbol in symbols:
         try:
             stock = data.get(symbol)
 
