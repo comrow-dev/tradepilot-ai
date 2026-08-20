@@ -84,9 +84,10 @@ def scan_market():
 
     # Hämta marknadens vinnare/förlorare från Twelve Data
     data = twelve_data(
-        "market_movers",
-        direction="gainers",
-        exchange="NASDAQ"
+    "market_movers/stocks",
+    direction="gainers",
+    country="USA",
+    outputsize=50
     )
 
     candidates = []
