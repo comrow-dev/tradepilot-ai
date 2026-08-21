@@ -117,19 +117,19 @@ def scan_market():
     
     data = {}
     
-for i in range(0, len(symbols), 6):
-    batch = symbols[i:i + 6]
+    for i in range(0, len(symbols), 6):
+        batch = symbols[i:i + 6]
 
-    batch_data = twelve_data(
-        "quote",
-        symbol=",".join(batch)
-    )
+        batch_data = twelve_data(
+            "quote",
+            symbol=",".join(batch)
+q        )
 
-    if isinstance(batch_data, dict):
-        data.update(batch_data)
+        if isinstance(batch_data, dict):
+            data.update(batch_data)
 
-    if i + 6 < len(symbols):
-        time.sleep(61)
+        if i + 6 < len(symbols):
+            time.sleep(61)
 
     candidates = []
 
