@@ -470,93 +470,121 @@ Skicka
 const API =
  localStorage.getItem("tradepilot_api") ||
  "https://tradepilot-ai-uykw.onrender.com";
-
+ 
 async function scan(){
+  const results = document.getElementById("results");
 
- const results =
- document.getElementById("results");
+  results.innerHTML =
+    '<div class="empty">🔎 Skannar marknaden...</div>';
 
- results.innerHTML =
- '<div class="empty">🔎 Skannar marknaden...</div>';
+  try{
+    const response = await fetch(API + "/api/scan");
+    const data = await response.json();
 
- try{
+    if(!data.results || data.results.length === 0){
+      results.innerHTML =
+        '<div class="empty">📊 Inga tydliga kandidater hittades just nu.</div>';
+      return;
+    }
 
-  const response =
-   await fetch(API + "/api/scan");
+    results.innerHTML = data.results.map(stock => {
 
-  const data =
-   await response.json();
+      const score = Number(stock.score || 0);
+      const price = Number(stock.price || 0);
+      const change = Number(stock.change_pct || 0);
+      const volume = Number(stock.volume || 0);
 
-  if(!data.results ||
-     data.results.length === 0){
+      const signal = stock.signal || "AVVAKTA";
 
-   results.innerHTML =
-    '<div class="empty">' +
-    'Inga aktier mellan +5 och +30 % hittades just nu.' +
-    '</div>';
+      let signalClass = "wait";
+      let signalIcon = "🟡";
 
-   return;
+      if(signal === "KÖP"){
+        signalClass = "buy";
+        signalIcon = "🟢";
+      }else if(signal === "UNDVIK"){
+        signalClass = "avoid";
+        signalIcon = "🔴";
+      }
+
+      const low = stock.buy_zone?.low;
+      const high = stock.buy_zone?.high;
+      const target = stock.target;
+      const stop = stock.stop_loss;
+
+      return `
+        <article class="stock-card">
+
+          <div class="stock-header">
+            <div>
+              <div class="ticker">${stock.symbol}</div>
+              <div class="stock-price">
+                ${price.toFixed(2)} $
+              </div>
+            </div>
+
+            <div class="signal ${signalClass}">
+              ${signalIcon} ${signal}
+            </div>
+          </div>
+
+          <div class="score-row">
+            <span>AI Score</span>
+            <strong>${score}/100</strong>
+          </div>
+
+          <div class="change-row">
+            <span>Förändring</span>
+            <strong class="${change >= 0 ? "positive" : "negative"}">
+              ${change >= 0 ? "+" : ""}${change.toFixed(2)}%
+            </strong>
+          </div>
+
+          <div class="stock-details">
+
+            <div>
+              <small>📈 Volym</small>
+              <strong>${volume.toLocaleString("sv-SE")}</strong>
+            </div>
+
+            <div>
+              <small>🟢 Köpzon</small>
+              <strong>
+                ${low != null && high != null
+                  ? `${Number(low).toFixed(2)} – ${Number(high).toFixed(2)} $`
+                  : "–"}
+              </strong>
+            </div>
+
+            <div>
+              <small>🎯 Target</small>
+              <strong>
+                ${target != null ? Number(target).toFixed(2) + " $" : "–"}
+              </strong>
+            </div>
+
+            <div>
+              <small>🛑 Stop-loss</small>
+              <strong>
+                ${stop != null ? Number(stop).toFixed(2) + " $" : "–"}
+              </strong>
+            </div>
+
+          </div>
+          
+        </article>
+      `;
+
+    }).join("");
+
+  }catch(error){
+
+    results.innerHTML =
+      '<div class="empty">⚠️ Kunde inte hämta marknadsdata.</div>';
+
+    console.error(error);
   }
-
-  results.innerHTML =
-   data.results.map(stock => `
-
-   <article class="card">
-
-    <div class="top">
-
-     <div>
-
-      <div class="ticker">
-       ${stock.symbol}
-      </div>
-
-      <div class="company">
-       Pris ${stock.price}
-      </div>
-
-     </div>
-
-     <div class="gain">
-      +${stock.change_pct}%
-     </div>
-
-    </div>
-
-    <div class="metrics">
-
-     <div class="metric">
-      <small>VOLYM</small>
-      ${stock.volume}
-     </div>
-
-     <div class="metric">
-      <small>RÖRELSE</small>
-      +${stock.change_pct}%
-     </div>
-
-     <div class="metric">
-      <small>STATUS</small>
-      MOMENTUM
-     </div>
-
-    </div>
-
-   </article>
-
-   `).join("");
-
- }catch(error){
-
-  results.innerHTML =
-   '<div class="empty">' +
-   '⚠️ Kunde inte ansluta till TradePilot-servern ännu.' +
-   '</div>';
-
- }
-
 }
-
 
 async function sendMessage(event){
 
