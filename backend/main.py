@@ -129,7 +129,7 @@ def scan_market():
           data.update(batch_data)
 
       if i + 6 < len(symbols):
-         time.sleep(61)
+          time.sleep(61)
 
     candidates = []
 
