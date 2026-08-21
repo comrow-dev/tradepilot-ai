@@ -123,7 +123,7 @@ def scan_market():
         batch_data = twelve_data(
             "quote",
             symbol=",".join(batch)
-q        )
+        )
 
         if isinstance(batch_data, dict):
             data.update(batch_data)
