@@ -1,3 +1,4 @@
+from scanner_v1 import scan_small_caps
 import os
 import time
 import requests
@@ -266,6 +267,14 @@ def auto_scan():
             "error": str(error),
             "results": [],
         }
+
+@app.get("/api/small-caps")
+def small_caps():
+    try:
+        from scanner_v1 import scan_small_caps
+        return scan_small_caps()
+    except Exception as error:
+        return {"ok": False, "error": str(error), "results": []}
 
 @app.get("/api/scanner-state")
 def scanner_state():
