@@ -9,7 +9,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from scanner_state import get_state, save_scan
-from auto_scan import scan_market
+from auto_scan import scan_market as auto_scan_market
 from scoring import analyze
 
 app = FastAPI(title="TradePilot AI")
@@ -243,7 +243,7 @@ def gainers():
 @app.get("/api/scan")
 def scan():
     try:
-        result = scan_market()
+        result = auto_scan_market()
         return result
     except Exception as error:
         return {
@@ -254,7 +254,7 @@ def scan():
 @app.get("/api/auto-scan")
 def auto_scan():
     try:
-        result = scan_market()
+        result = auto_scan_market()
         save_scan(
             result.get("results", []),
             result.get("error")

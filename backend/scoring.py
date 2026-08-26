@@ -17,15 +17,17 @@ def analyze(stock):
     volume = number(stock.get("volume"))
     price = number(stock.get("price"))
 
-    # =========================
-    # TRADEPILOT SCORE 0-100
-    # =========================
+    # ==================================
+    # TRADEPILOT SCORE V2 — 0-100
+    # ==================================
 
     # 1. Momentum: 0-30
-    momentum = min(
-        30.0,
-        max(0.0, change * 2.2)
-    )
+    # Positiv rörelse belönas gradvis.
+    # Negativ rörelse ger tydligt avdrag.
+    if change <= 0:
+        momentum = max(-18.0, change * 1.5)
+    else:
+        momentum = min(30.0, change * 2.2)
 
     # 2. Volym: 0-25
     volume_score = min(
@@ -47,27 +49,46 @@ def analyze(stock):
         liquidity = 2.0
 
     # 4. Tidig momentum
-    # Vi vill inte bara jaga aktier
-    # som redan rusat väldigt mycket.
-    if 5 <= change <= 12:
+    # Progressiv bonus utan hårda hopp.
+    if change <= 5:
+        early_bonus = max(0.0, change / 5 * 10.0)
+
+    elif change <= 12:
         early_bonus = 10.0
+
     elif change <= 18:
-        early_bonus = 6.0
+        # 10 -> 6 mellan 12% och 18%
+        early_bonus = 10.0 - ((change - 12) / 6) * 4.0
+
+    elif change <= 25:
+        # 6 -> 2 mellan 18% och 25%
+        early_bonus = 6.0 - ((change - 18) / 7) * 4.0
+
     else:
         early_bonus = 2.0
 
     # 5. Risk
     risk_penalty = 0.0
 
+    # Kraftig uppgång = ökande risk
     if change > 18:
         risk_penalty += min(
-            12.0,
-            (change - 18) * 1.2
+            20.0,
+            (change - 18.0) * 1.5
         )
 
+    # Extrem uppgång = ytterligare risk
+    if change > 25:
+        risk_penalty += min(
+            10.0,
+            (change - 25.0) * 1.0
+        )
+
+    # Låg volym = högre risk
     if volume < 25_000:
         risk_penalty += 10.0
 
+    # Score
     score = round(
         max(
             0.0,
@@ -81,14 +102,22 @@ def analyze(stock):
                 - risk_penalty
             )
         ),
-        1,
+        1
     )
 
-    # =========================
+    # ==================================
     # SIGNAL
-    # =========================
+    # ==================================
 
-    if score >= 82:
+    if change < 0:
+        signal = "AVSTÅ"
+        risk = "HÖG"
+
+    elif change > 25:
+        signal = "AVSTÅ"
+        risk = "HÖG"
+
+    elif score >= 82:
         signal = "KÖP-KANDIDAT"
         risk = "MEDEL"
 
@@ -104,17 +133,31 @@ def analyze(stock):
         signal = "AVSTÅ"
         risk = "HÖG"
 
-    # =========================
+    # ==================================
     # KÖP / STOP / MÅL
-    # =========================
+    # ==================================
 
-    if price > 0:
+    stop = None
+    target1 = None
+    target2 = None
+    risk_reward = None
 
+    # Trade-plan skapas endast för
+    # positiv och köpbar setup.
+    if score >= 70 and price > 0 and change > 0 and change <= 25:
+
+        # Progressiv stop-loss
+        # Undviker stora hopp vid små förändringar i momentum.
         if change <= 12:
             stop_pct = 0.045
 
         elif change <= 18:
-            stop_pct = 0.060
+            # 4.5% -> 6.0% mellan 12% och 18%
+            stop_pct = 0.045 + ((change - 12) / 6) * 0.015
+
+        elif change <= 25:
+            # 6.0% -> 7.0% mellan 18% och 25%
+            stop_pct = 0.060 + ((change - 18) / 7) * 0.010
 
         else:
             stop_pct = 0.070
@@ -138,65 +181,41 @@ def analyze(stock):
 
         if risk_per_share > 0:
             risk_reward = round(
-                (target1 - price)
-                / risk_per_share,
+                (target1 - price) / risk_per_share,
                 2
             )
-        else:
-            risk_reward = None
 
-    else:
-
-        stop = None
-        target1 = None
-        target2 = None
-        risk_reward = None
-
-    # =========================
+    # ==================================
     # HANDELSBESLUT
-    # =========================
+    # ==================================
 
-    if score >= 82 and price > 0:
-
+    if score >= 82 and price > 0 and 0 < change <= 25:
         action = "KÖP-KANDIDAT"
 
-    elif score >= 70:
-
+    elif score >= 70 and change > 0:
         action = "VÄNTA PÅ BEKRÄFTELSE"
 
     else:
-
         action = "AVVAKTA"
 
-    # =========================
+    # ==================================
     # RESULTAT
-    # =========================
+    # ==================================
 
     return {
         **stock,
 
         "score": score,
-
         "signal": signal,
-
         "risk": risk,
 
         "trade_plan": {
-
             "action": action,
-
-            "entry": price
-            if price > 0
-            else None,
-
+            "entry": price if price > 0 else None,
             "stop_loss": stop,
-
             "target_1": target1,
-
             "target_2": target2,
-
             "risk_reward": risk_reward,
-
             "sell_rule": (
                 "Ta delvinst vid mål 1. "
                 "Flytta därefter stop-loss uppåt. "
@@ -206,30 +225,23 @@ def analyze(stock):
         },
 
         "analysis": {
-
             "observation": (
-                f"Rörelse +{change:.2f}% "
-                f"med volym "
-                f"{int(volume):,}."
+                f"Rörelse {change:+.2f}% "
+                f"med volym {int(volume):,}."
             ),
-
             "context": (
                 "Score baseras på momentum, "
-                "volym, likviditet, tidig "
+                "volym, likviditet, tidigt "
                 "momentum och risk."
             ),
-
             "bullish_scenario": (
-                "Fortsatt uppgång bör "
-                "bekräftas av fortsatt "
-                "eller ökande volym."
+                "Fortsatt uppgång bör bekräftas "
+                "av fortsatt eller ökande volym."
             ),
-
             "bearish_scenario": (
-                f"Under {stop} är "
-                "setupen försvagad."
-                if stop
-                else "Prisdata saknas."
+                f"Under {stop} är setupen försvagad."
+                if stop is not None
+                else "Prisdata saknas eller setupen är inte köpbar."
             ),
         },
     }

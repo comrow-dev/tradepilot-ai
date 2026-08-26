@@ -31,8 +31,14 @@ def scan_market():
     data = response.json()
 
     candidates = []
+    seen = set()
 
-    for stock in data.get("top_gainers", []):
+    stocks = (
+        data.get("top_gainers", [])
+        + data.get("most_actively_traded", [])
+    )
+
+    for stock in stocks:
         try:
             change = float(
                 str(stock.get("change_percentage", "0"))
@@ -41,9 +47,15 @@ def scan_market():
         except (TypeError, ValueError):
             continue
 
-        if 5 <= change <= 30:
+        ticker = stock.get("ticker")
+
+        # Endast positiva rörelser upp till 100 %.
+        # Score-systemet avgör därefter kvaliteten.
+        if 0 < change <= 100 and ticker and ticker not in seen:
+            seen.add(ticker)
+
             candidate = {
-                "symbol": stock.get("ticker"),
+                "symbol": ticker,
                 "price": stock.get("price"),
                 "change_pct": change,
                 "volume": stock.get("volume"),

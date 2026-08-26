@@ -1,7 +1,105 @@
-const API=localStorage.getItem("tradepilot_api")||"http://localhost:8000";
-const status=document.getElementById("status"), results=document.getElementById("results");
-async function health(){try{const r=await fetch(API+"/api/health");const x=await r.json();status.textContent=x.market_data?"Marknadsdata ansluten":"Marknadsdata saknas"}catch(e){status.textContent="Backend ej ansluten"}}
-async function scan(){results.innerHTML='<div class="empty">Skannar...</div>';try{const r=await fetch(API+"/api/scan");const x=await r.json();if(!x.results?.length){results.innerHTML='<div class="empty">Inga aktier mellan +10 och +30 % hittades i datakällan just nu.</div>';return}results.innerHTML=x.results.map(s=>`<article class="card"><div class="top"><div><div class="ticker">${s.symbol}</div><div class="muted">Pris ${s.price} · Volym ${s.volume}</div></div><div class="gain">+${s.change_pct}%</div></div><div class="metrics"><div class="metric"><small>DATA</small>Live/delayed beroende på avtal</div><div class="metric"><small>FILTER</small>10–30 %</div><div class="metric"><small>KÄLLA</small>${s.source}</div></div></article>`).join("")}catch(e){results.innerHTML='<div class="empty">Kunde inte hämta marknadsdata. Kontrollera backend och API-nyckel.</div>'}}
-document.getElementById("scan").onclick=scan;
-document.getElementById("form").onsubmit=async e=>{e.preventDefault();const input=document.getElementById("input"), text=input.value.trim();if(!text)return;const box=document.getElementById("messages");box.innerHTML+=`<div class="msg user">${text}</div>`;input.value="";try{const r=await fetch(API+"/api/chat",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({message:text})});const x=await r.json();box.innerHTML+=`<div class="msg ai">${x.answer}</div>`}catch(e){box.innerHTML+='<div class="msg ai">Backend är inte ansluten.</div>'}};
-health();
+const API =
+  localStorage.getItem("tradepilot_api") ||
+  `${location.protocol}//${location.hostname.replace(/\.github\.dev$/, "-8000.app.github.dev")}`;
+
+const statusEl = document.getElementById("status");
+const resultsEl = document.getElementById("results");
+const scanButton = document.getElementById("scan");
+
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
+function renderResults(data) {
+  if (!resultsEl) return;
+
+  const results = Array.isArray(data.results) ? data.results : [];
+
+  if (!results.length) {
+    resultsEl.innerHTML = "<div>Inga resultat hittades.</div>";
+    return;
+  }
+
+  resultsEl.innerHTML = results.map(x => {
+    const tp = x.trade_plan || {};
+    const score = Number(x.score ?? 0);
+
+    return `
+      <div class="result-card">
+        <h3>${escapeHtml(x.symbol)} <span>Score ${escapeHtml(score)}</span></h3>
+        <p><strong>Action:</strong> ${escapeHtml(tp.action || x.signal || "AVVAKTA")}</p>
+        <p><strong>Pris:</strong> ${escapeHtml(x.price)}</p>
+        <p><strong>Entry:</strong> ${escapeHtml(tp.entry)}</p>
+        <p><strong>Stop-loss:</strong> ${escapeHtml(tp.stop_loss)}</p>
+        <p><strong>Target:</strong> ${escapeHtml(tp.target_1)}</p>
+        <p><strong>Risk/Reward:</strong> ${escapeHtml(tp.risk_reward)}</p>
+      </div>
+    `;
+  }).join("");
+}
+
+async function scan() {
+  if (statusEl) {
+    statusEl.textContent = "⏳ Skannar marknaden...";
+  }
+
+  if (scanButton) {
+    scanButton.disabled = true;
+  }
+
+  try {
+    const response = await fetch(`${API}/api/scan`);
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+
+    const data = await response.json();
+
+    if (!data.ok) {
+      throw new Error(data.error || "Skanningen misslyckades");
+    }
+
+    renderResults(data);
+
+    if (statusEl) {
+      statusEl.textContent =
+        `✅ Klart – ${data.count ?? data.results?.length ?? 0} aktier analyserade`;
+    }
+  } catch (error) {
+    console.error(error);
+
+    if (statusEl) {
+      statusEl.textContent = `❌ Fel: ${error.message}`;
+    }
+
+    if (resultsEl) {
+      resultsEl.innerHTML =
+        `<div class="error">Kunde inte hämta marknadsdata.</div>`;
+    }
+  } finally {
+    if (scanButton) {
+      scanButton.disabled = false;
+    }
+  }
+}
+
+if (scanButton) {
+  scanButton.addEventListener("click", scan);
+}
+
+const form = document.getElementById("form");
+
+if (form) {
+  form.addEventListener("submit", async event => {
+    event.preventDefault();
+    await scan();
+  });
+}
+
+window.scan = scan;
