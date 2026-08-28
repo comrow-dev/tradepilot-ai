@@ -10,28 +10,9 @@ BASE_URL = "https://finnhub.io/api/v1"
 
 
 def get_daily_volume(symbol):
-    try:
-        now = int(time.time())
-        response = requests.get(
-            f"{BASE_URL}/stock/candle",
-            params={
-                "symbol": symbol,
-                "resolution": "D",
-                "from": now - 7 * 86400,
-                "to": now,
-                "token": API_KEY,
-            },
-            timeout=10,
-        )
-        response.raise_for_status()
-        data = response.json()
-        volumes = data.get("v", [])
-        if volumes:
-            return volumes[-1]
-    except Exception:
-        pass
+    # Finnhub-kontot saknar åtkomst till /stock/candle.
+    # Volym används inte längre som krav i scanningen.
     return None
-
 
 def get_market_movers(direction):
     if not API_KEY:
@@ -140,7 +121,7 @@ def scan_market():
             if not ticker or ticker in seen:
                 continue
 
-            if 0 < change <= 100 and stock.get("last") is not None and stock.get("volume") is not None:
+            if 0 < change <= 100 and stock.get("last") is not None:
                 seen.add(ticker)
 
                 candidate = {
