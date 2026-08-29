@@ -27,17 +27,40 @@ function renderResults(data) {
 
   resultsEl.innerHTML = results.map(x => {
     const tp = x.trade_plan || {};
+    const dt = x.external_sources?.daytrading || {};
     const score = Number(x.score ?? 0);
 
     return `
       <div class="result-card">
-        <h3>${escapeHtml(x.symbol)} <span>Score ${escapeHtml(score)}</span></h3>
-        <p><strong>Action:</strong> ${escapeHtml(tp.action || x.signal || "AVVAKTA")}</p>
+        <h3>
+          ${escapeHtml(x.symbol)}
+          <span>TradePilot ${escapeHtml(score)}</span>
+        </h3>
+
+        <p>
+          <strong>Bolag:</strong>
+          ${escapeHtml(x.company_name || "Okänt")}
+        </p>
+
+        <p>
+          <strong>Action:</strong>
+          ${escapeHtml(tp.action || x.signal || "AVVAKTA")}
+        </p>
+
         <p><strong>Pris:</strong> ${escapeHtml(x.price)}</p>
         <p><strong>Entry:</strong> ${escapeHtml(tp.entry)}</p>
         <p><strong>Stop-loss:</strong> ${escapeHtml(tp.stop_loss)}</p>
-        <p><strong>Target:</strong> ${escapeHtml(tp.target_1)}</p>
+        <p><strong>Target 1:</strong> ${escapeHtml(tp.target_1)}</p>
+        <p><strong>Target 2:</strong> ${escapeHtml(tp.target_2)}</p>
         <p><strong>Risk/Reward:</strong> ${escapeHtml(tp.risk_reward)}</p>
+
+        <hr>
+
+        <p>
+          <strong>Daytrading.se:</strong>
+          ${escapeHtml(dt.signal || "NEUTRAL")}
+          ${dt.mentioned ? " – match hittad" : " – ingen match"}
+        </p>
       </div>
     `;
   }).join("");
