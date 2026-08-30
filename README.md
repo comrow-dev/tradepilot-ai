@@ -1,34 +1,36 @@
-# TradePilot AI — riktig backendversion
+# TradePilot AI
 
-Detta är en riktig backend/frontend-struktur, inte demoaktier.
+Uppdaterad version där:
+- Finnhub är huvudkälla för marknadsdata.
+- TradePilots egen scoring är fortfarande huvudmotorn.
+- Daytrading.se är ett separat extra expertlager och kan aldrig ensamt skapa en köp-/säljsignal.
+- Saknad data markeras tydligt i stället för att fyllas med påhittade värden.
 
-## 1. Marknadsdata
-Backend använder Alpha Vantage. Dokumentationen stöder globala aktiesymboler och intraday-data; realtid kräver rätt data-entitlement/abonnemang. Appen visar därför inte påhittade realtidspriser. https://www.alphavantage.co/documentation/
+## Miljövariabler
 
-## 2. AI
-Chatboten använder OpenAI Responses API när OPENAI_API_KEY finns. OpenAI:s API faktureras separat från ChatGPT-abonnemanget. https://platform.openai.com/overview
+```bash
+FINNHUB_API_KEY=din_nyckel
+OPENAI_API_KEY=din_nyckel
+OPENAI_MODEL=gpt-5.6-luna
+DAYTRADING_SOURCE_URL=https://www.daytrading.se/varldensbastaaktier
+```
 
-## 3. Starta backend
-Python 3.11+
-pip install -r backend/requirements.txt
-export ALPHAVANTAGE_API_KEY="..."
-export OPENAI_API_KEY="..."
+## Start
+
+```bash
+python -m pip install -r backend/requirements.txt
 uvicorn backend.main:app --host 0.0.0.0 --port 8000
+```
 
-Windows PowerShell:
-$env:ALPHAVANTAGE_API_KEY="..."
-$env:OPENAI_API_KEY="..."
-uvicorn backend.main:app --host 0.0.0.0 --port 8000
+## Viktig arkitektur
 
-## 4. Starta frontend
-Öppna frontend/index.html lokalt för enkel testning, eller servera mappen med en HTTPS-webbserver.
+`Finnhub -> kandidatdata -> TradePilot scoring -> Daytrading.se expertlager -> slutresultat`
 
-## Viktigt för produktionsversionen
-- Global IPO/new-listing-feed behöver kopplas till en licensierad IPO-datakälla.
-- Realtidsdata behöver rätt börsabonnemang/data-entitlements.
-- Lägg till autentisering så att appen verkligen är privat.
-- Lägg API-nycklar endast på servern.
-- Lägg till pushnotiser.
-- Lägg till portfölj och positioner.
-- Lägg till paper trading och full trade journal.
-- Riktig orderläggning ska vara avstängd tills strategin är backtestad och paper-tradad.
+Daytrading.se påverkar endast expertfältet. Den ersätter inte TradePilots scoring.
+
+## Kontroll
+
+```bash
+python -m py_compile backend/main.py backend/auto_scan.py backend/scoring.py backend/daytrading_source.py
+python -c "from backend.auto_scan import scan_market; print('IMPORT OK')"
+```
