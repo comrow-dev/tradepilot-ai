@@ -1,175 +1,81 @@
-import math
-
-
-def number(value, default=0.0):
+def _num(value, default=0.0):
     try:
-        return float(
-            str(value)
-            .replace("%", "")
-            .replace(",", "")
-        )
+        return float(value)
     except (TypeError, ValueError):
         return default
 
+def analyze(candidate):
+    """TradePilots egen scoring. Daytrading.se ligger utanför denna grundscore."""
+    price = _num(candidate.get("price"))
+    change = _num(candidate.get("change_pct"))
+    volume = candidate.get("volume")
 
-def analyze(stock):
-    change = number(stock.get("change_pct"))
-    volume = number(stock.get("volume"))
-    price = number(stock.get("price"))
+    score = 0.0
+    reasons = []
 
-    # ==================================
-    # TRADEPILOT SCORE V2 — 0-100
-    # HUVUDMOTOR
-    # ==================================
+    # Momentum
+    if change >= 5:
+        score += 4
+        reasons.append("starkt momentum")
+    elif change > 0:
+        score += 2
+        reasons.append("positivt momentum")
+    elif change < -5:
+        score -= 3
+        reasons.append("svagt momentum")
 
-    # 1. Momentum: 0-30
-    if change <= 0:
-        momentum = max(-18.0, change * 1.5)
+    # Likviditet
+    if volume is not None:
+        vol = _num(volume)
+        if vol >= 1_000_000:
+            score += 3
+            reasons.append("hög likviditet")
+        elif vol >= 100_000:
+            score += 1
+            reasons.append("godtagbar likviditet")
+        elif vol > 0:
+            score -= 1
+            reasons.append("låg likviditet")
     else:
-        momentum = min(30.0, change * 2.2)
+        reasons.append("volym saknas")
 
-    # 2. Volym: 0-25
-    volume_score = min(
-        25.0,
-        max(0.0, math.log10(max(volume, 1)) * 2.7),
-    )
-
-    # 3. Likviditet: 0-20
-    if volume >= 1_000_000:
-        liquidity = 20.0
-    elif volume >= 250_000:
-        liquidity = 15.0
-    elif volume >= 50_000:
-        liquidity = 9.0
-    else:
-        liquidity = 2.0
-
-    # 4. Tidig momentum
-    if change <= 5:
-        early_bonus = max(0.0, change / 5 * 10.0)
-    elif change <= 12:
-        early_bonus = 10.0
-    elif change <= 18:
-        early_bonus = 10.0 - ((change - 12) / 6) * 4.0
-    elif change <= 25:
-        early_bonus = 6.0 - ((change - 18) / 7) * 4.0
-    else:
-        early_bonus = 2.0
-
-    # 5. Risk
-    risk_penalty = 0.0
-
-    if change > 18:
-        risk_penalty += min(20.0, (change - 18.0) * 1.5)
-
-    if change > 25:
-        risk_penalty += min(10.0, (change - 25.0) * 1.0)
-
-    if volume < 25_000:
-        risk_penalty += 10.0
-
-    score = round(
-        max(
-            0.0,
-            min(
-                100.0,
-                15.0
-                + momentum
-                + volume_score
-                + liquidity
-                + early_bonus
-                - risk_penalty,
-            ),
-        ),
-        1,
-    )
-
-    if change < 0:
-        signal = "AVSTÅ"
+    # Enkel konservativ riskbedömning
+    risk = "MEDEL"
+    if change >= 15:
         risk = "HÖG"
-    elif change > 25:
-        signal = "AVSTÅ"
-        risk = "HÖG"
-    elif score >= 82:
-        signal = "KÖP-KANDIDAT"
-        risk = "MEDEL"
-    elif score >= 70:
-        signal = "VÄNTA PÅ BEKRÄFTELSE"
-        risk = "MEDEL"
-    elif score >= 55:
-        signal = "BEVAKA"
-        risk = "MEDEL/HÖG"
-    else:
-        signal = "AVSTÅ"
+        score -= 1
+    elif change <= -8:
         risk = "HÖG"
 
-    stop = None
-    target1 = None
-    target2 = None
-    risk_reward = None
+    signal = "AVVAKTA"
+    if score >= 6 and change > 0:
+        signal = "ÖVERVÄG"
+    elif score <= 0:
+        signal = "AVSTÅ"
 
-    if score >= 70 and price > 0 and change > 0 and change <= 25:
-        if change <= 12:
-            stop_pct = 0.045
-        elif change <= 18:
-            stop_pct = 0.045 + ((change - 12) / 6) * 0.015
-        elif change <= 25:
-            stop_pct = 0.060 + ((change - 18) / 7) * 0.010
-        else:
-            stop_pct = 0.070
-
-        stop = round(price * (1 - stop_pct), 4)
-        target1 = round(price * (1 + stop_pct * 1.8), 4)
-        target2 = round(price * (1 + stop_pct * 3.0), 4)
-
-        risk_per_share = price - stop
-        if risk_per_share > 0:
-            risk_reward = round(
-                (target1 - price) / risk_per_share,
-                2,
-            )
-
-    if score >= 82 and price > 0 and 0 < change <= 25:
-        action = "KÖP-KANDIDAT"
-    elif score >= 70 and change > 0:
-        action = "VÄNTA PÅ BEKRÄFTELSE"
-    else:
-        action = "AVVAKTA"
+    entry = price if price > 0 else None
+    stop = round(price * 0.96, 4) if price > 0 and signal == "ÖVERVÄG" else None
+    target1 = round(price * 1.06, 4) if price > 0 and signal == "ÖVERVÄG" else None
+    target2 = round(price * 1.10, 4) if price > 0 and signal == "ÖVERVÄG" else None
 
     return {
-        **stock,
-        "score": score,
+        "score": round(score, 2),
         "signal": signal,
         "risk": risk,
         "trade_plan": {
-            "action": action,
-            "entry": price if price > 0 else None,
+            "action": "ÖVERVÄG" if signal == "ÖVERVÄG" else "AVVAKTA",
+            "entry": entry,
             "stop_loss": stop,
             "target_1": target1,
             "target_2": target2,
-            "risk_reward": risk_reward,
-            "sell_rule": (
-                "Ta delvinst vid mål 1. "
-                "Flytta därefter stop-loss uppåt. "
-                "Sälj om stop-loss träffas eller om momentum bryts."
-            ),
+            "risk_reward": 1.5 if stop and target1 else None,
+            "sell_rule": "Ta delvinst vid mål 1. Flytta därefter stop-loss uppåt. Sälj om stop-loss träffas eller momentum bryts.",
         },
         "analysis": {
-            "observation": (
-                f"Rörelse {change:+.2f}% med volym {int(volume):,}."
-            ),
-            "context": (
-                "Huvudscore baseras på TradePilots egna "
-                "momentum-, volym-, likviditets- och riskregler. "
-                "Externa källor hålls separerade."
-            ),
-            "bullish_scenario": (
-                "Fortsatt uppgång bör bekräftas av fortsatt eller ökande volym."
-            ),
-            "bearish_scenario": (
-                f"Under {stop} är setupen försvagad."
-                if stop is not None
-                else "Prisdata saknas eller setupen är inte köpbar."
-            ),
+            "observation": f"Rörelse {change:.2f}% med volym {volume if volume is not None else 'saknas'}",
+            "context": "Score baseras på TradePilots momentum-, volym-, likviditets- och risklogik.",
+            "bullish_scenario": "Fortsatt uppgång bör bekräftas av fortsatt styrka och helst ökande volym.",
+            "bearish_scenario": "Prisdata, likviditet eller momentum försämras.",
+            "reasons": reasons,
         },
     }
