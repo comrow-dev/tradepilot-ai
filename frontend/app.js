@@ -1,87 +1,14 @@
-const API = localStorage.getItem("tradepilot_api") || "http://localhost:8000";
-const statusEl = document.getElementById("status");
-const results = document.getElementById("results");
-
-function esc(v) {
-  return String(v ?? "").replace(/[&<>"']/g, c => ({
-    "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"
-  }[c]));
-}
-
-async function health() {
-  try {
-    const r = await fetch(API + "/api/health");
-    const x = await r.json();
-    statusEl.textContent = x.market_data ? "Finnhub ansluten" : "Finnhub-nyckel saknas";
-  } catch {
-    statusEl.textContent = "Backend ej ansluten";
-  }
-}
-
-async function scan() {
-  results.innerHTML = '<div class="empty">Skannar riktiga marknadsdata...</div>';
-  try {
-    const r = await fetch(API + "/api/scan");
-    const x = await r.json();
-    if (!r.ok) throw new Error(x.detail || "Scan error");
-
-    if (!x.results?.length) {
-      results.innerHTML = '<div class="empty">Inga kandidater hittades just nu.</div>';
-      return;
-    }
-
-    results.innerHTML = x.results.map(s => {
-      const dt = s.daytrading || {};
-      return `
-      <article class="card">
-        <div class="top">
-          <div>
-            <div class="ticker">${esc(s.symbol)}</div>
-            <div class="muted">${esc(s.company_name)} · Pris ${esc(s.price)}</div>
-          </div>
-          <div class="gain">${Number(s.change_pct).toFixed(2)}%</div>
-        </div>
-        <div class="metrics">
-          <div class="metric"><small>TRADEPILOT SCORE</small>${esc(s.score)}</div>
-          <div class="metric"><small>SIGNAL</small>${esc(s.signal)}</div>
-          <div class="metric"><small>RISK</small>${esc(s.risk)}</div>
-        </div>
-        <div class="expert">
-          <b>Daytrading.se — extra lager</b>
-          <span>Signal: ${esc(dt.signal || "EJ TILLGÄNGLIG")}</span>
-          <span>Expert-score: ${esc(dt.expert_score ?? 0)}</span>
-          <span>Nämnd: ${dt.mentioned ? "Ja" : "Nej"}</span>
-        </div>
-      </article>`;
-    }).join("");
-  } catch (e) {
-    results.innerHTML = `<div class="empty">Kunde inte skanna: ${esc(e.message)}</div>`;
-  }
-}
-
-document.getElementById("scan").onclick = scan;
-
-document.getElementById("form").onsubmit = async e => {
-  e.preventDefault();
-  const input = document.getElementById("input");
-  const text = input.value.trim();
-  if (!text) return;
-
-  const box = document.getElementById("messages");
-  box.innerHTML += `<div class="msg user">${esc(text)}</div>`;
-  input.value = "";
-
-  try {
-    const r = await fetch(API + "/api/chat", {
-      method: "POST",
-      headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({message: text})
-    });
-    const x = await r.json();
-    box.innerHTML += `<div class="msg ai">${esc(x.answer)}</div>`;
-  } catch {
-    box.innerHTML += '<div class="msg ai">Backend är inte ansluten.</div>';
-  }
-};
-
-health();
+const API=localStorage.getItem("tradepilot_api")||"http://localhost:8000";
+const statusEl=document.getElementById("status"),results=document.getElementById("results"),summary=document.getElementById("summary"),charts=document.getElementById("charts");let latestScan=null;
+function esc(v){return String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[c]));}
+function num(v){return v==null||Number.isNaN(Number(v))?null:Number(v)} function fmt(v,d=2){const n=num(v);return n==null?"—":n.toFixed(d)}
+async function health(){try{const r=await fetch(API+"/api/health"),x=await r.json();statusEl.textContent=x.market_data?`Finnhub ansluten · ${x.learning?.closed_trades||0} avslutade`:"Finnhub-nyckel saknas"}catch{statusEl.textContent="Backend ej ansluten"}}
+function renderSummary(x){const a=x.results||[],avg=a.length?a.reduce((s,x)=>s+(num(x.score)||0),0)/a.length:0,buys=a.filter(s=>s.signal==="KÖPSETUP").length;summary.innerHTML=`<div class="stat"><small>MARKNAD</small><b>${esc(x.market?.regime||"—")}</b></div><div class="stat"><small>KANDIDATER</small><b>${a.length}</b></div><div class="stat"><small>SNITT SCORE</small><b>${avg.toFixed(0)}</b></div><div class="stat"><small>KÖPSETUP</small><b>${buys}</b></div>`}
+function renderCharts(x){const a=(x.results||[]).slice(0,8);if(!a.length){charts.innerHTML="";return}const maxRR=Math.max(2,...a.map(s=>num(s.trade_plan?.risk_reward)||0));
+const score=a.map(s=>{let v=Math.max(0,Math.min(100,num(s.score)||0));return `<div class="bar-row"><b>${esc(s.symbol)}</b><div class="bar-bg"><div class="bar-fill" style="width:${v}%"></div></div><span>${v.toFixed(0)}</span></div>`}).join("");
+const rr=a.map(s=>{let v=Math.max(0,num(s.trade_plan?.risk_reward)||0);return `<div class="bar-row"><b>${esc(s.symbol)}</b><div class="bar-bg"><div class="bar-fill" style="width:${Math.min(100,v/maxRR*100)}%"></div></div><span>${v.toFixed(1)}</span></div>`}).join("");
+charts.innerHTML=`<div class="chart-card"><div class="chart-title">Score – bästa kandidater</div><div class="bars">${score}</div></div><div class="chart-card"><div class="chart-title">Risk / reward</div><div class="bars">${rr}</div></div>`}
+function render(x){latestScan=x;renderSummary(x);renderCharts(x);if(!x.results?.length){results.innerHTML='<div class="empty">Inga kandidater hittades just nu.</div>';return}const regime=x.market?.regime||"—";results.innerHTML=x.results.map(s=>{const d=s.daytrading||{},t=s.technical||{},p=s.trade_plan||{},score=Math.max(0,Math.min(100,num(s.score)||0));return `<article class="card"><div class="top"><div><div class="ticker">${esc(s.symbol)}</div><div class="muted">${esc(s.company_name)} · ${fmt(s.price)}</div></div><div class="gain">${fmt(s.change_pct)}%</div></div><div class="scoreline"><div class="scoreline-head"><span>TradePilot score</span><b>${score.toFixed(0)}/100</b></div><div class="scorebg"><div class="scorefill" style="width:${score}%"></div></div></div><div class="metrics"><div class="metric"><small>CONFIDENCE</small>${esc(s.confidence)}%</div><div class="metric"><small>SIGNAL</small>${esc(s.signal)}</div><div class="metric"><small>RISK</small>${esc(s.risk)}</div><div class="metric"><small>RVOL</small>${fmt(t.rvol20,1)}x</div></div><div class="metrics"><div class="metric"><small>RSI</small>${fmt(t.rsi14,1)}</div><div class="metric"><small>ENTRY</small>${fmt(p.entry)}</div><div class="metric"><small>R/R</small>${fmt(p.risk_reward,2)}</div><div class="metric"><small>MARKNAD</small>${esc(regime)}</div></div><div class="expert"><b>Daytrading.se – separat källa</b><span>${esc(d.signal||"EJ TILLGÄNGLIG")}</span><span>${d.mentioned?"Nämnd":"Ej tydligt nämnd"}</span></div><div class="muted">${esc((s.reasons||[]).join(" · "))}</div></article>`}).join("")}
+async function scan(){results.innerHTML='<div class="empty">Analyserar marknaden...</div>';try{const r=await fetch(API+"/api/scan?limit=25"),x=await r.json();if(!r.ok)throw Error(x.detail||"Scan error");render(x)}catch(e){results.innerHTML=`<div class="empty">Kunde inte skanna: ${esc(e.message)}</div>`}}
+document.getElementById("scan").onclick=scan;
+document.getElementById("form").onsubmit=async e=>{e.preventDefault();const i=document.getElementById("input"),text=i.value.trim();if(!text)return;const b=document.getElementById("messages");b.innerHTML+=`<div class="msg user">${esc(text)}</div>`;i.value="";try{const r=await fetch(API+"/api/chat",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({message:text,context:latestScan})}),x=await r.json();b.innerHTML+=`<div class="msg ai">${esc(x.answer||x.detail||"Inget svar")}</div>`}catch{b.innerHTML+='<div class="msg ai">Backend är inte ansluten.</div>'}};health();
