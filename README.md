@@ -1,36 +1,41 @@
 # TradePilot AI
 
-Uppdaterad version där:
-- Finnhub är huvudkälla för marknadsdata.
-- TradePilots egen scoring är fortfarande huvudmotorn.
-- Daytrading.se är ett separat extra expertlager och kan aldrig ensamt skapa en köp-/säljsignal.
-- Saknad data markeras tydligt i stället för att fyllas med påhittade värden.
+TradePilot är en egen trading- och beslutsmotor med målet att hitta mätbar riskjusterad edge.
 
-## Miljövariabler
+## Kärna
+- Finnhub marknadsdata
+- teknisk analys och multi-timeframe
+- marknadsregim och sektorstyrka
+- fundamenta, nyheter, analytiker- och insiderdata
+- Daytrading.se som separat extern informationskälla
+- egen 0–100 scoring + confidence
+- ATR-baserad risk/reward
+- signalhistorik i SQLite
+- backtest med modellerad spread, slippage och courtage
+- riktig rolling walk-forward/OOS med parametertröskel vald enbart på träningsdelen
+- SEC EDGAR-verifiering som separat officiell datakälla
+- cachning av Daytrading.se-källan för att minska onödiga upprepade hämtningar
+- API för att stänga och följa upp signaler
 
-```bash
-FINNHUB_API_KEY=din_nyckel
-OPENAI_API_KEY=din_nyckel
-OPENAI_MODEL=gpt-5.6-luna
-DAYTRADING_SOURCE_URL=https://www.daytrading.se/varldensbastaaktier
-```
+## Viktig princip
+Vi lägger inte till funktioner bara för att de låter bra. En faktor ska kunna mätas mot historiska resultat och helst överleva out-of-sample-testning innan den får större vikt i modellen.
+
+Backtesten är en valideringsmotor, inte ett löfte om framtida avkastning.
 
 ## Start
-
 ```bash
-python -m pip install -r backend/requirements.txt
+pip install -r backend/requirements.txt
 uvicorn backend.main:app --host 0.0.0.0 --port 8000
 ```
 
-## Viktig arkitektur
-
-`Finnhub -> kandidatdata -> TradePilot scoring -> Daytrading.se expertlager -> slutresultat`
-
-Daytrading.se påverkar endast expertfältet. Den ersätter inte TradePilots scoring.
-
-## Kontroll
-
-```bash
-python -m py_compile backend/main.py backend/auto_scan.py backend/scoring.py backend/daytrading_source.py
-python -c "from backend.auto_scan import scan_market; print('IMPORT OK')"
-```
+Miljövariabler:
+- `FINNHUB_API_KEY`
+- `OPENAI_API_KEY`
+- `OPENAI_MODEL`
+- `DAYTRADING_SOURCE_URL`
+- `TRADEPILOT_DB`
+- `TRADEPILOT_COMMISSION_PCT` (per sida, standard 0.02%)
+- `TRADEPILOT_SLIPPAGE_PCT` (per sida, standard 0.05%)
+- `TRADEPILOT_SPREAD_PCT` (round-trip, standard 0.05%)
+- `TRADEPILOT_UNIVERSE_LIMIT` (standard 500)
+- `SEC_USER_AGENT` (rekommenderas: identifiera app + kontakt vid SEC-anrop)
