@@ -1,4 +1,6 @@
 from datetime import datetime, timezone
+import os
+import time
 from backend.engine.data import Finnhub
 from backend.engine.technical import technical_snapshot
 from backend.engine.intelligence import market_regime, news_catalysts, fundamental_snapshot
@@ -11,8 +13,9 @@ SECTOR_ETFS={"Technology":"XLK","Financials":"XLF","Healthcare":"XLV","Energy":"
 def market_context(fh):
     snap=fh.market_snapshot(); ctx=market_regime(snap); sectors={}
     for name,etf in SECTOR_ETFS.items():
-        try: sectors[name]=fh.quote(etf).get("dp")
-        except: sectors[name]=None
+        try:
+            sectors[name]=fh.quote(etf).get("dp"); time.sleep(0.05)
+        except Exception: sectors[name]=None
     ctx["sector_changes_pct"]=sectors
     return ctx
 
@@ -46,27 +49,29 @@ def candidate(fh,item,market):
     data_points=[price,prev,tech.get("rsi14"),tech.get("rvol20"),fund.get("revenue_growth"),sector_change]
     c={"symbol":s,"company_name":item.get("description") or profile.get("name") or "","price":price,"change_pct":change,"volume":q.get("v"),"technical":tech,"timeframes":tfs,"fundamentals":fund,"market":m,"catalysts":news,"analyst_trends":rec,"insider":insider,"daytrading":dt,"data_completeness":sum(v is not None for v in data_points)/len(data_points),"detected_at":datetime.now(timezone.utc).isoformat()}
     result=score_candidate(c); result.update({k:c[k] for k in ["symbol","company_name","price","change_pct","volume","technical","timeframes","fundamentals","catalysts","analyst_trends","insider","daytrading","detected_at"]})
-    result["market"]=m
-    result["signal_id"]=record_signal(result)
+    result["market"]=m; result["signal_id"]=record_signal(result)
     return result
 
 def scan_market(limit=25,universe_limit=None):
-    import os
     if universe_limit is None: universe_limit=int(os.getenv("TRADEPILOT_UNIVERSE_LIMIT","500"))
+    universe_limit=min(universe_limit,int(os.getenv("TRADEPILOT_PREFILTER_LIMIT","30")))
+    deep_limit=min(max(3,limit),int(os.getenv("TRADEPILOT_DEEP_LIMIT","3")))
     fh=Finnhub(); market=market_context(fh); symbols=fh.symbols("US"); movers=[]
     for item in symbols[:universe_limit]:
         s=item.get("symbol")
         if not s or "." in s or "^" in s: continue
         try:
             q=fh.quote(s); c=q.get("c"); pc=q.get("pc")
-            if c and pc and float(c)>1: movers.append((item,(float(c)-float(pc))/float(pc)*100))
-        except: continue
-    movers=sorted(movers,key=lambda x:x[1],reverse=True)[:min(60,limit*3)]
+            if c and pc and float(c)>1:movers.append((item,(float(c)-float(pc))/float(pc)*100))
+        except Exception: continue
+        time.sleep(0.12)
+    movers=sorted(movers,key=lambda x:x[1],reverse=True)[:deep_limit]
     results=[]
     for item,_ in movers:
         try:
             r=candidate(fh,item,market)
-            if r: results.append(r)
-        except: continue
+            if r:results.append(r)
+        except Exception:continue
+        time.sleep(0.15)
     results.sort(key=lambda x:(x.get("score",0),x.get("confidence",0)),reverse=True)
     return {"ok":True,"source":"Finnhub","count":len(results[:limit]),"results":results[:limit],"market":market,"scanned_at":datetime.now(timezone.utc).isoformat(),"universe_considered":len(symbols[:universe_limit]),"prefiltered":len(movers)}
