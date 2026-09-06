@@ -1,4 +1,4 @@
-const API=localStorage.getItem("tradepilot_api")||"http://localhost:8000";
+const API="https://tradepilot-ai-uykw.onrender.com";
 const statusEl=document.getElementById("status"),results=document.getElementById("results"),summary=document.getElementById("summary"),charts=document.getElementById("charts");let latestScan=null;
 function esc(v){return String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[c]));}
 function num(v){return v==null||Number.isNaN(Number(v))?null:Number(v)} function fmt(v,d=2){const n=num(v);return n==null?"—":n.toFixed(d)}
