@@ -1,190 +1,248 @@
-const API="https://tradepilot-ai-uykw.onrender.com";
+import os
+import time
+import threading
+from datetime import datetime, timezone, timedelta
 
-const statusEl=document.getElementById("status"),
-results=document.getElementById("results"),
-summary=document.getElementById("summary"),
-charts=document.getElementById("charts");
+import requests
 
-let latestScan=null;
+FINNHUB_API_KEY = os.getenv("FINNHUB_API_KEY", "")
+FINNHUB_BASE_URL = "https://finnhub.io/api/v1"
 
-function esc(v){
-  return String(v??"").replace(/[&<>"']/g,c=>({
-    "&":"&amp;",
-    "<":"&lt;",
-    ">":"&gt;",
-    '"':"&quot;",
-    "'":"&#039;"
-  }[c]));
-}
+TWELVE_DATA_API_KEY = (
+    os.getenv("TWELVE_DATA_API_KEY")
+    or os.getenv("TWELVE_API_KEY")
+    or os.getenv("TWELVE_DATA_KEY")
+    or ""
+)
+TWELVE_DATA_BASE_URL = "https://api.twelvedata.com"
 
-function num(v){
-  return v==null||Number.isNaN(Number(v))?null:Number(v);
-}
+FINNHUB_MIN_INTERVAL = float(os.getenv("FINNHUB_MIN_INTERVAL", "1.05"))
+FINNHUB_CACHE_TTL = float(os.getenv("FINNHUB_CACHE_TTL", "45"))
+TWELVE_MIN_INTERVAL = float(os.getenv("TWELVE_MIN_INTERVAL", "1.05"))
+TWELVE_CACHE_TTL = float(os.getenv("TWELVE_CACHE_TTL", "120"))
 
-function fmt(v,d=2){
-  const n=num(v);
-  return n==null?"—":n.toFixed(d);
-}
+_finnhub_last_request = 0.0
+_twelve_last_request = 0.0
+_finnhub_lock = threading.Lock()
+_twelve_lock = threading.Lock()
+_finnhub_cache = {}
+_twelve_cache = {}
 
-async function health(){
-  try{
-    const r=await fetch(API+"/api/health");
-    const x=await r.json();
 
-    statusEl.textContent=x.market_data
-      ? `Backend ansluten · ${x.learning?.closed_trades||0} avslutade`
-      : "Marknadsdata saknas";
-  }catch{
-    statusEl.textContent="Backend ej ansluten";
-  }
-}
+def _cache_get(cache, key, ttl):
+    item = cache.get(key)
+    if item and time.monotonic() - item[0] < ttl:
+        return item[1]
+    return None
 
-function renderSummary(x){
-  const a=x.results||[];
 
-  const avg=a.length
-    ? a.reduce((s,x)=>s+(num(x.score)||0),0)/a.length
-    : 0;
+class TwelveData:
+    def __init__(self, key=None):
+        self.key = key or TWELVE_DATA_API_KEY
 
-  const buys=a.filter(s=>s.signal==="KÖPSETUP").length;
+    def request(self, path="/time_series", params=None, timeout=20):
+        if not self.key:
+            raise RuntimeError("TWELVE_DATA_API_KEY saknas")
 
-  summary.innerHTML=
-    `<div class="stat"><small>MARKNAD</small><b>${esc(x.market?.regime||"—")}</b></div>`+
-    `<div class="stat"><small>KANDIDATER</small><b>${a.length}</b></div>`+
-    `<div class="stat"><small>SNITT SCORE</small><b>${avg.toFixed(0)}</b></div>`+
-    `<div class="stat"><small>KÖPSETUP</small><b>${buys}</b></div>`;
-}
+        p = dict(params or {})
+        p["apikey"] = self.key
+        cache_key = (
+            path,
+            tuple(sorted((k, str(v)) for k, v in p.items() if k != "apikey")),
+        )
 
-function renderCharts(x){
-  const a=(x.results||[]).slice(0,8);
+        cached = _cache_get(_twelve_cache, cache_key, TWELVE_CACHE_TTL)
+        if cached is not None:
+            return cached
 
-  if(!a.length){
-    charts.innerHTML="";
-    return;
-  }
+        global _twelve_last_request
+        with _twelve_lock:
+            wait = TWELVE_MIN_INTERVAL - (
+                time.monotonic() - _twelve_last_request
+            )
+            if wait > 0:
+                time.sleep(wait)
 
-  const maxRR=Math.max(
-    2,
-    ...a.map(s=>num(s.trade_plan?.risk_reward)||0)
-  );
+            r = requests.get(
+                TWELVE_DATA_BASE_URL + path,
+                params=p,
+                timeout=timeout,
+            )
+            _twelve_last_request = time.monotonic()
 
-  const score=a.map(s=>{
-    const v=Math.max(
-      0,
-      Math.min(100,num(s.score)||0)
-    );
+        r.raise_for_status()
+        data = r.json()
 
-    return `
-      <div class="bar-row">
-        <b>${esc(s.symbol)}</b>
-        <div class="bar-bg">
-          <div class="bar-fill" style="width:${v}%"></div>
-        </div>
-        <span>${v.toFixed(0)}</span>
-      </div>`;
-  }).join("");
+        if isinstance(data, dict) and data.get("status") == "error":
+            raise RuntimeError(
+                data.get("message") or data.get("code") or "Twelve Data error"
+            )
 
-  const rr=a.map(s=>{
-    const v=Math.max(
-      0,
-      num(s.trade_plan?.risk_reward)||0
-    );
+        _twelve_cache[cache_key] = (time.monotonic(), data)
+        return data
 
-    return `
-      <div class="bar-row">
-        <b>${esc(s.symbol)}</b>
-        <div class="bar-bg">
-          <div class="bar-fill" style="width:${Math.min(100,v/maxRR*100)}%"></div>
-        </div>
-        <span>${v.toFixed(1)}</span>
-      </div>`;
-  }).join("");
+    def candles(self, symbol, resolution="D", days=400):
+        interval_map = {
+            "D": "1day",
+            "60": "1h",
+            "15": "15min",
+        }
+        interval = interval_map.get(resolution)
+        if not interval:
+            raise ValueError(f"Unsupported Twelve Data resolution: {resolution}")
 
-  charts.innerHTML=
-    `<div class="chart-card">
-      <div class="chart-title">Score – bästa kandidater</div>
-      <div class="bars">${score}</div>
-    </div>`+
-    `<div class="chart-card">
-      <div class="chart-title">Risk / reward</div>
-      <div class="bars">${rr}</div>
-    </div>`;
-}
+        if resolution == "D":
+            outputsize = min(max(days + 20, 250), 5000)
+        elif resolution == "60":
+            outputsize = min(max(days * 7 + 100, 500), 5000)
+        else:
+            outputsize = min(max(days * 26 + 100, 500), 5000)
 
-function render(x){
-  latestScan=x;
+        data = self.request(
+            "/time_series",
+            {
+                "symbol": symbol,
+                "interval": interval,
+                "outputsize": outputsize,
+                "order": "ASC",
+            },
+            timeout=25,
+        )
 
-  renderSummary(x);
-  renderCharts(x);
+        values = data.get("values") if isinstance(data, dict) else None
+        if not values:
+            raise RuntimeError(f"Inga candles från Twelve Data för {symbol} {interval}")
 
-  if(!x.results?.length){
-    results.innerHTML=
-      '<div class="empty">Inga kandidater hittades just nu.</div>';
-    return;
-  }
+        # Convert Twelve Data's OHLCV strings to the Finnhub-like structure
+        # expected by technical_snapshot().
+        out = {
+            "s": "ok",
+            "t": [],
+            "o": [],
+            "h": [],
+            "l": [],
+            "c": [],
+            "v": [],
+        }
 
-  const regime=x.market?.regime||"—";
+        for row in values:
+            try:
+                dt = row.get("datetime")
+                if dt:
+                    try:
+                        ts = int(
+                            datetime.fromisoformat(
+                                dt.replace("Z", "+00:00")
+                            ).timestamp()
+                        )
+                    except ValueError:
+                        ts = int(
+                            datetime.strptime(
+                                dt[:19], "%Y-%m-%d %H:%M:%S"
+                            ).replace(tzinfo=timezone.utc).timestamp()
+                        )
+                else:
+                    ts = 0
 
-  results.innerHTML=x.results.map(s=>{
-    const d=s.daytrading||{},
-    t=s.technical||{},
-    p=s.trade_plan||{};
+                out["t"].append(ts)
+                out["o"].append(float(row["open"]))
+                out["h"].append(float(row["high"]))
+                out["l"].append(float(row["low"]))
+                out["c"].append(float(row["close"]))
+                out["v"].append(float(row.get("volume", 0) or 0))
+            except (TypeError, ValueError, KeyError):
+                continue
 
-    const score=Math.max(
-      0,
-      Math.min(100,num(s.score)||0)
-    );
+        if not out["c"]:
+            raise RuntimeError(f"Ogiltiga candles från Twelve Data för {symbol}")
 
-    return `
-      <article class="card">
+        return out
 
-        <div class="top">
-          <div>
-            <div class="ticker">${esc(s.symbol)}</div>
-            <div class="muted">
-              ${esc(s.company_name)} · ${fmt(s.price)}
-            </div>
-          </div>
 
-          <div class="gain">
-            ${fmt(s.change_pct)}%
-          </div>
-        </div>
+class Finnhub:
+    def __init__(self, key=None):
+        self.key = key or FINNHUB_API_KEY
 
-        <div class="scoreline">
-          <div class="scoreline-head">
-            <span>TradePilot score</span>
-            <b>${score.toFixed(0)}/100</b>
-          </div>
+    def request(self, path, params=None, timeout=15):
+        if not self.key:
+            raise RuntimeError("FINNHUB_API_KEY saknas")
 
-          <div class="scorebg">
-            <div class="scorefill"
-                 style="width:${score}%"></div>
-          </div>
-        </div>
+        p = dict(params or {})
+        p["token"] = self.key
+        cache_key = (
+            path,
+            tuple(sorted((k, str(v)) for k, v in p.items() if k != "token")),
+        )
 
-        <div class="metrics">
+        cached = _cache_get(_finnhub_cache, cache_key, FINNHUB_CACHE_TTL)
+        if cached is not None:
+            return cached
 
-          <div class="metric">
-            <small>CONFIDENCE</small>
-            ${esc(s.confidence)}%
-          </div>
+        global _finnhub_last_request
+        with _finnhub_lock:
+            wait = FINNHUB_MIN_INTERVAL - (
+                time.monotonic() - _finnhub_last_request
+            )
+            if wait > 0:
+                time.sleep(wait)
 
-          <div class="metric">
-            <small>SIGNAL</small>
-            ${esc(s.signal)}
-          </div>
+            r = requests.get(
+                FINNHUB_BASE_URL + path,
+                params=p,
+                timeout=timeout,
+            )
+            _finnhub_last_request = time.monotonic()
 
-          <div class="metric">
-            <small>RISK</small>
-            ${esc(s.risk)}
-          </div>
+        r.raise_for_status()
+        data = r.json()
 
-          <div class="metric">
-            <small>RVOL</small>
-            ${fmt(t.rvol20,1)}x
-          </div>
+        if isinstance(data, dict) and data.get("error"):
+            raise RuntimeError(str(data["error"]))
 
-        </div>
+        _finnhub_cache[cache_key] = (time.monotonic(), data)
+        return data
 
-        <div class="metrics">
+    def symbols(self, exchange="US"):
+        return self.request("/stock/symbol", {"exchange": exchange})
+
+    def quote(self, symbol):
+        return self.request("/quote", {"symbol": symbol})
+
+    def candles(self, symbol, resolution="D", days=400):
+        # Finnhub candle access is not available for this API key/plan.
+        # Use Twelve Data for historical OHLCV instead.
+        return TwelveData().candles(symbol, resolution, days)
+
+    def company_profile(self, symbol):
+        return self.request("/stock/profile2", {"symbol": symbol})
+
+    def metrics(self, symbol):
+        return self.request("/stock/metric", {"symbol": symbol, "metric": "all"})
+
+    def recommendation_trends(self, symbol):
+        return self.request("/stock/recommendation", {"symbol": symbol})
+
+    def insider_transactions(self, symbol):
+        return self.request("/stock/insider-transactions", {"symbol": symbol})
+
+    def company_news(self, symbol, days=7):
+        end = datetime.now(timezone.utc).date()
+        start = end - timedelta(days=days)
+        return self.request(
+            "/company-news",
+            {"symbol": symbol, "from": start.isoformat(), "to": end.isoformat()},
+            timeout=20,
+        )
+
+    def market_news(self, category="general", days=2):
+        return self.request("/news", {"category": category}, timeout=20)
+
+    def market_snapshot(self):
+        symbols = ["SPY", "QQQ", "IWM"]
+        q = {}
+        for s in symbols:
+            try:
+                q[s] = self.quote(s)
+            except Exception as e:
+                q[s] = {"error": str(e)}
+        return q
