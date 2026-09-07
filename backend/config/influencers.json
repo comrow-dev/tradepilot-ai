@@ -1,0 +1,147 @@
+{
+  "sources": [
+    {
+      "name": "Metro Finans",
+      "type": "market_community",
+      "country": "SE",
+      "platforms": ["web"],
+      "specialties": ["aktier", "trading", "teknisk analys", "fundamental analys", "makro"],
+      "weight": 1.0,
+      "enabled": true
+    },
+    {
+      "name": "Professor Kalkyl",
+      "type": "investor_analyst",
+      "country": "SE",
+      "platforms": ["web", "social"],
+      "specialties": ["small caps", "tillväxtbolag", "aktieanalys"],
+      "weight": 1.0,
+      "enabled": true
+    },
+    {
+      "name": "Västkustinvesteraren",
+      "type": "investor",
+      "country": "SE",
+      "platforms": ["web", "social"],
+      "specialties": ["aktier", "investeringar", "tillväxtbolag"],
+      "weight": 0.9,
+      "enabled": true
+    },
+    {
+      "name": "Cornucopia",
+      "type": "market_commentator",
+      "country": "SE",
+      "platforms": ["web", "blog"],
+      "specialties": ["makro", "ekonomi", "börs", "samhällsekonomi"],
+      "weight": 0.9,
+      "enabled": true
+    },
+    {
+      "name": "Nicklas Andersson / Investeraren",
+      "type": "investor_commentator",
+      "country": "SE",
+      "platforms": ["social", "web"],
+      "specialties": ["aktier", "investeringar", "marknad"],
+      "weight": 0.9,
+      "enabled": true
+    },
+    {
+      "name": "Stockrobber",
+      "type": "trader_analyst",
+      "country": "SE",
+      "platforms": ["social", "web"],
+      "specialties": ["teknisk analys", "fundamental analys", "aktier", "makro"],
+      "weight": 0.9,
+      "enabled": true
+    },
+    {
+      "name": "The Swedish Investor",
+      "type": "investor_education",
+      "country": "SE",
+      "platforms": ["youtube", "web"],
+      "specialties": ["investeringar", "aktieanalys", "investeringsstrategier"],
+      "weight": 0.8,
+      "enabled": true
+    },
+    {
+      "name": "IanG",
+      "type": "market_commentator",
+      "country": "SE",
+      "platforms": ["social", "web"],
+      "specialties": ["aktier", "investeringar", "marknad"],
+      "weight": 0.8,
+      "enabled": true
+    },
+    {
+      "name": "Morgan Housel",
+      "type": "investor_author",
+      "country": "US",
+      "platforms": ["social", "blog", "youtube"],
+      "specialties": ["behavioral finance", "investing", "market psychology", "long term investing"],
+      "weight": 0.9,
+      "enabled": true
+    },
+    {
+      "name": "Liz Ann Sonders",
+      "type": "investment_strategist",
+      "country": "US",
+      "platforms": ["social", "web", "youtube"],
+      "specialties": ["macro", "markets", "economy", "market strategy"],
+      "weight": 1.0,
+      "enabled": true
+    },
+    {
+      "name": "Ben Carlson",
+      "type": "investor_author",
+      "country": "US",
+      "platforms": ["blog", "social", "youtube"],
+      "specialties": ["markets", "investing", "asset allocation", "behavioral finance"],
+      "weight": 0.9,
+      "enabled": true
+    },
+    {
+      "name": "Brian Feroldi",
+      "type": "stock_analyst",
+      "country": "US",
+      "platforms": ["social", "youtube", "web"],
+      "specialties": ["stocks", "fundamental analysis", "financial statements", "growth companies"],
+      "weight": 1.0,
+      "enabled": true
+    },
+    {
+      "name": "Tadas Viskanta",
+      "type": "financial_research_curator",
+      "country": "US",
+      "platforms": ["blog", "social"],
+      "specialties": ["financial research", "markets", "investing", "research curation"],
+      "weight": 0.9,
+      "enabled": true
+    }
+  ],
+  "platforms": [
+    {
+      "name": "X",
+      "type": "social",
+      "purpose": "real_time_market_commentary",
+      "enabled": true
+    },
+    {
+      "name": "YouTube",
+      "type": "video",
+      "purpose": "deep_dive_analysis",
+      "enabled": true
+    },
+    {
+      "name": "Substack",
+      "type": "long_form",
+      "purpose": "investment_thesis_and_research",
+      "enabled": true
+    },
+    {
+      "name": "Blogs",
+      "type": "long_form",
+      "purpose": "independent_financial_research",
+      "enabled": true
+    }
+  ]
+}
