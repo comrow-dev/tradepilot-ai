@@ -589,7 +589,7 @@ def build_intelligence_payload(
 
     items = filter_recent(
         result.get("items", []),
-        max_items=max_items,
+        max_items,
     )
 
     return {
