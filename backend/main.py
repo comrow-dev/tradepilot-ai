@@ -15,7 +15,7 @@ from backend.daytrading_source import SOURCE_URL
 
 app=FastAPI(title="TradePilot AI", version="2.0")
 origins=[x.strip() for x in os.getenv("TRADEPILOT_CORS_ORIGINS","http://localhost:3000,http://localhost:5173,http://127.0.0.1:5500").split(",") if x.strip()]
-app.add_middleware(CORSMiddleware,allow_origins=origins,allow_methods=["GET","POST","HEAD"]],allow_headers=["Content-Type","Authorization"])
+app.add_middleware(CORSMiddleware,allow_origins=origins,allow_methods=["GET","POST","HEAD"],allow_headers=["Content-Type","Authorization"])
 OPENAI_KEY=os.getenv("OPENAI_API_KEY",""); OPENAI_MODEL=os.getenv("OPENAI_MODEL","")
 
 @app.get("/api/health")
