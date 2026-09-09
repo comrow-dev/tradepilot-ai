@@ -15,7 +15,7 @@ from backend.daytrading_source import SOURCE_URL
 
 app=FastAPI(title="TradePilot AI", version="2.0")
 origins=[x.strip() for x in os.getenv("TRADEPILOT_CORS_ORIGINS","http://localhost:3000,http://localhost:5173,http://127.0.0.1:5500").split(",") if x.strip()]
-app.add_middleware(CORSMiddleware,allow_origins=origins,allow_methods=["GET","POST"],allow_headers=["Content-Type","Authorization"])
+app.add_middleware(CORSMiddleware,allow_origins=origins,allow_methods=["GET","POST","HEAD"]],allow_headers=["Content-Type","Authorization"])
 OPENAI_KEY=os.getenv("OPENAI_API_KEY",""); OPENAI_MODEL=os.getenv("OPENAI_MODEL","")
 
 @app.get("/api/health")
@@ -26,11 +26,19 @@ def health():
 def quote(symbol:str):
     try:return Finnhub().quote(symbol.upper())
     except Exception as e: raise HTTPException(502,str(e))
-
+        
+@app.head("/api/scan")
+def scan_head():
+    return None
+    
 @app.get("/api/scan")
 def scan(limit:int=Query(25,ge=5,le=50)):
     try:return scan_market(limit=limit)
     except Exception as e: raise HTTPException(502,str(e))
+        
+@app.head("/api/auto-scan")
+def auto_scan_head():
+    return None
 
 @app.get("/api/auto-scan")
 def auto_scan(limit:int=Query(25,ge=5,le=50)):
