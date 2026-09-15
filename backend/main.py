@@ -8,7 +8,7 @@ from pydantic import BaseModel
 from backend.engine.data import Finnhub
 from backend.engine.pipeline import scan_market
 from backend.engine.backtest import backtest_symbol
-from backend.engine.validation import walk_forward
+from backend.engine.validation import walk_forward as run_walk_forward
 from backend.engine.sec import SEC
 from backend.engine.learning import summary, close_signal
 from backend.daytrading_source import SOURCE_URL
@@ -52,7 +52,7 @@ def backtest(symbol:str,lookback:int=Query(250,ge=60,le=1000)):
 
 @app.get("/api/walk-forward/{symbol}")
 def walk_forward(symbol:str,lookback:int=Query(750,ge=300,le=2000),train_days:int=Query(400,ge=100,le=1000),test_days:int=Query(100,ge=30,le=500),step:int=Query(100,ge=20,le=500)):
-    try:return walk_forward(Finnhub(),symbol.upper(),lookback,train_days,test_days)
+    try:return run_walk_forward(Finnhub(),symbol.upper(),lookback,train_days,test_days,step)
     except Exception as e: raise HTTPException(502,str(e))
 
 @app.post("/api/signals/{signal_id}/close")
