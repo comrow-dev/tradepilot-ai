@@ -317,12 +317,13 @@ def candidate(fh, symbol, market):
 
     result["market"] = m
 
+    if result.get("signal") in ("KÖPSETUP", "ÖVERVÄG"):
     try:
-        result["signal_id"] = record_signal(
-            result
-        )
+        result["signal_id"] = record_signal(result)
     except Exception:
         result["signal_id"] = None
+else:
+    result["signal_id"] = None
 
     return result
 
