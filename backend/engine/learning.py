@@ -1,0 +1,209 @@
+import os, sqlite3, json
+from datetime import datetime, timezone
+
+DATABASE_URL = os.getenv("DATABASE_URL", "").strip()
+DB = os.getenv("TRADEPILOT_DB", "tradepilot.db")
+
+
+def connect():
+    if DATABASE_URL:
+        import psycopg
+        return psycopg.connect(DATABASE_URL)
+
+    c = sqlite3.connect(DB)
+    c.execute(
+        '''CREATE TABLE IF NOT EXISTS signals(
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            symbol TEXT,
+            detected_at TEXT,
+            entry REAL,
+            stop REAL,
+            target REAL,
+            score REAL,
+            confidence REAL,
+            signal TEXT,
+            outcome TEXT,
+            exit_price REAL,
+            pnl_pct REAL,
+            metadata TEXT
+        )'''
+    )
+    c.commit()
+    return c
+
+
+def _init_postgres(db):
+    with db.cursor() as cur:
+        cur.execute(
+            '''CREATE TABLE IF NOT EXISTS signals(
+                id BIGSERIAL PRIMARY KEY,
+                symbol TEXT,
+                detected_at TEXT,
+                entry DOUBLE PRECISION,
+                stop DOUBLE PRECISION,
+                target DOUBLE PRECISION,
+                score DOUBLE PRECISION,
+                confidence DOUBLE PRECISION,
+                signal TEXT,
+                outcome TEXT,
+                exit_price DOUBLE PRECISION,
+                pnl_pct DOUBLE PRECISION,
+                metadata TEXT
+            )'''
+        )
+    db.commit()
+
+
+def _db():
+    db = connect()
+    if DATABASE_URL:
+        _init_postgres(db)
+    return db
+
+
+def record_signal(c):
+    with _db() as db:
+        if DATABASE_URL:
+            with db.cursor() as cur:
+                # Do not create another open signal for a symbol that
+                # already has an open signal. Once the existing signal is
+                # closed, a later scan may create a new one.
+                cur.execute(
+                    '''SELECT id
+                    FROM signals
+                    WHERE symbol=%s
+                      AND outcome IS NULL
+                    ORDER BY id DESC
+                    LIMIT 1''',
+                    (c.get('symbol'),)
+                )
+                existing = cur.fetchone()
+
+                if existing:
+                    return existing[0]
+
+                cur.execute(
+                    '''INSERT INTO signals
+                    (symbol,detected_at,entry,stop,target,score,confidence,signal,metadata)
+                    VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                    RETURNING id''',
+                    (
+                        c.get('symbol'),
+                        c.get('detected_at', datetime.now(timezone.utc).isoformat()),
+                        c.get('trade_plan',{}).get('entry'),
+                        c.get('trade_plan',{}).get('stop_loss'),
+                        c.get('trade_plan',{}).get('target_1'),
+                        c.get('score'),
+                        c.get('confidence'),
+                        c.get('signal'),
+                        json.dumps(c, default=str)
+                    )
+                )
+                return cur.fetchone()[0]
+
+        # SQLite fallback: same duplicate protection as PostgreSQL.
+        existing = db.execute(
+            '''SELECT id
+            FROM signals
+            WHERE symbol=?
+              AND outcome IS NULL
+            ORDER BY id DESC
+            LIMIT 1''',
+            (c.get('symbol'),)
+        ).fetchone()
+
+        if existing:
+            return existing[0]
+
+        cur = db.execute(
+            'INSERT INTO signals(symbol,detected_at,entry,stop,target,score,confidence,signal,metadata) VALUES(?,?,?,?,?,?,?,?,?)',
+            (
+                c.get('symbol'),
+                c.get('detected_at', datetime.now(timezone.utc).isoformat()),
+                c.get('trade_plan',{}).get('entry'),
+                c.get('trade_plan',{}).get('stop_loss'),
+                c.get('trade_plan',{}).get('target_1'),
+                c.get('score'),
+                c.get('confidence'),
+                c.get('signal'),
+                json.dumps(c, default=str)
+            )
+        )
+        return cur.lastrowid
+
+
+def close_signal(signal_id, outcome, exit_price, pnl_pct):
+    if outcome not in ('WIN','LOSS','FLAT'):
+        raise ValueError('Ogiltigt outcome')
+
+    with _db() as db:
+        if DATABASE_URL:
+            with db.cursor() as cur:
+                cur.execute(
+                    'UPDATE signals SET outcome=%s,exit_price=%s,pnl_pct=%s WHERE id=%s',
+                    (outcome, float(exit_price), float(pnl_pct), int(signal_id))
+                )
+        else:
+            db.execute(
+                'UPDATE signals SET outcome=?,exit_price=?,pnl_pct=? WHERE id=?',
+                (outcome, float(exit_price), float(pnl_pct), int(signal_id))
+            )
+
+    return {'id':signal_id,'outcome':outcome,'exit_price':exit_price,'pnl_pct':pnl_pct}
+
+
+def summary():
+    with _db() as db:
+        if DATABASE_URL:
+            with db.cursor() as cur:
+                cur.execute(
+                    "SELECT COUNT(*),SUM(CASE WHEN outcome='WIN' THEN 1 ELSE 0 END),AVG(pnl_pct),AVG(score) FROM signals WHERE outcome IS NOT NULL"
+                )
+                total,wins,avg,avg_score=cur.fetchone()
+                cur.execute("SELECT COUNT(*) FROM signals WHERE outcome IS NULL")
+                open_count=cur.fetchone()[0]
+        else:
+            total,wins,avg,avg_score=db.execute(
+                "SELECT COUNT(*),SUM(CASE WHEN outcome='WIN' THEN 1 ELSE 0 END),AVG(pnl_pct),AVG(score) FROM signals WHERE outcome IS NOT NULL"
+            ).fetchone()
+            open_count=db.execute("SELECT COUNT(*) FROM signals WHERE outcome IS NULL").fetchone()[0]
+
+        return {
+            'closed_trades':total or 0,
+            'open_signals':open_count or 0,
+            'wins':wins or 0,
+            'win_rate':round(wins/total*100,1) if total else None,
+            'avg_pnl_pct':round(avg,3) if avg is not None else None,
+            'avg_score':round(avg_score,1) if avg_score is not None else None
+        }
+
+
+def open_signals(limit=50):
+    with _db() as db:
+        if DATABASE_URL:
+            with db.cursor() as cur:
+                cur.execute(
+                    "SELECT id,symbol,detected_at,entry,stop,target,score,confidence,signal FROM signals WHERE outcome IS NULL ORDER BY id DESC LIMIT %s",
+                    (int(limit),)
+                )
+                rows=cur.fetchall()
+        else:
+            rows=db.execute(
+                "SELECT id,symbol,detected_at,entry,stop,target,score,confidence,signal FROM signals WHERE outcome IS NULL ORDER BY id DESC LIMIT ?",
+                (int(limit),)
+            ).fetchall()
+
+        return [
+            {
+                'id':row[0],
+                'symbol':row[1],
+                'detected_at':row[2],
+                'entry':row[3],
+                'stop':row[4],
+                'target':row[5],
+                'score':row[6],
+                'confidence':row[7],
+                'signal':row[8]
+            }
+            for row in rows
+        ]
