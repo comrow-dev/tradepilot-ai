@@ -79,17 +79,28 @@ def _headline_symbols(item):
 
 def _build_company_index(directory):
     """
-    Build a first-token index so article matching does not scan every
-    company with a regex. This keeps discovery fast on large symbol lists.
+    Build first-token and first-two-token indexes so article matching does not
+    scan every company with a regex. The phrase index catches shortened
+    public-facing names such as "Flux Power" when the directory has a longer
+    legal name.
     """
-    index = {}
+    first_index = {}
+    phrase_index = {}
     for symbol, name, display_name in directory:
         tokens = name.split()
         if not tokens:
             continue
+
         first = tokens[0]
-        index.setdefault(first, []).append((symbol, name, display_name))
-    return index
+        first_index.setdefault(first, []).append((symbol, name, display_name))
+
+        if len(tokens) >= 2 and len(tokens[0]) >= 4 and len(tokens[1]) >= 4:
+            phrase = " ".join(tokens[:2])
+            phrase_index.setdefault(phrase, []).append(
+                (symbol, name, display_name)
+            )
+
+    return {"first": first_index, "phrase": phrase_index}
 
 
 def _company_name_symbols(item, company_index):
@@ -100,16 +111,38 @@ def _company_name_symbols(item, company_index):
         return []
 
     words = text.split()
-    word_set = set(words)
     out = []
+    seen = set()
 
-    # Only inspect companies whose first word actually occurs in the article.
+    # Strongest match: exact normalized full company name.
+    # Also use article-derived two-word phrases to catch shortened names
+    # without scanning the entire company directory.
+    phrases = set()
+    for i in range(len(words) - 1):
+        if len(words[i]) >= 4 and len(words[i + 1]) >= 4:
+            phrases.add(words[i] + " " + words[i + 1])
+
+    for phrase in phrases:
+        for symbol, name, _display_name in company_index.get("phrase", {}).get(
+            phrase, []
+        ):
+            if symbol not in seen:
+                seen.add(symbol)
+                out.append(symbol)
+
+    # Preserve the v11 full-name matching path as a fallback/strong signal.
+    word_set = set(words)
     for first in word_set:
-        for symbol, name, _display_name in company_index.get(first, []):
+        for symbol, name, _display_name in company_index.get("first", {}).get(
+            first, []
+        ):
+            if symbol in seen:
+                continue
             if re.search(
                 r"(?<![a-z0-9])" + re.escape(name) + r"(?![a-z0-9])",
                 text,
             ):
+                seen.add(symbol)
                 out.append(symbol)
 
     return out
@@ -201,8 +234,9 @@ def _market_news_multi_category(fh, days):
 
 def discover_news_candidates(fh, days=2, limit=25):
     """
-    News Discovery v8 diagnostic build.
-    Measures each major stage so slow responses can be traced.
+    News Discovery v13.
+    Improves company-name matching for shortened public-facing names and
+    caches per-request symbol verification to avoid repeated API calls.
     No DB writes and no trading signals.
     """
     timings = {}
@@ -245,7 +279,7 @@ def discover_news_candidates(fh, days=2, limit=25):
     t = time.perf_counter()
     company_index = _build_company_index(directory)
     timings["company_index_seconds"] = round(time.perf_counter() - t, 3)
-    timings["company_index_keys"] = len(company_index)
+    timings["company_index_keys"] = len(company_index.get("first", {}))
 
     debug["symbol_directory_sample"] = [
         {"symbol": symbol, "name": display_name}
@@ -255,6 +289,8 @@ def discover_news_candidates(fh, days=2, limit=25):
     discovered = []
     diagnostics = []
     seen = set()
+    verification_cache = {}
+    verification_cache_hits = 0
     inspected = 0
     articles_with_symbols = 0
     rejected_large = 0
@@ -306,9 +342,14 @@ def discover_news_candidates(fh, days=2, limit=25):
                     })
                 continue
 
-            t = time.perf_counter()
-            verified, cap, reason = _verify_symbol(fh, symbol)
-            verification_seconds += time.perf_counter() - t
+            if symbol in verification_cache:
+                verified, cap, reason = verification_cache[symbol]
+                verification_cache_hits += 1
+            else:
+                t = time.perf_counter()
+                verified, cap, reason = _verify_symbol(fh, symbol)
+                verification_seconds += time.perf_counter() - t
+                verification_cache[symbol] = (verified, cap, reason)
 
             if not verified:
                 if reason == "large_cap":
@@ -352,6 +393,8 @@ def discover_news_candidates(fh, days=2, limit=25):
 
     timings["catalyst_analysis_seconds"] = round(catalyst_seconds, 3)
     timings["verification_seconds"] = round(verification_seconds, 3)
+    timings["verification_cache_hits"] = verification_cache_hits
+    timings["verification_cache_size"] = len(verification_cache)
     timings["total_seconds"] = round(time.perf_counter() - t0, 3)
 
     discovered.sort(
