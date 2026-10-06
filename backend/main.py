@@ -12,6 +12,7 @@ from backend.engine.backtest import backtest_symbol
 from backend.engine.validation import walk_forward as run_walk_forward
 from backend.engine.sec import SEC
 from backend.engine.learning import summary, close_signal, open_signals
+from backend.engine.sentisense_adapter import get_sentiment
 from backend.daytrading_source import SOURCE_URL
 
 app=FastAPI(title="TradePilot AI", version="2.0")
@@ -43,6 +44,15 @@ def news_discovery(days:int=Query(7,ge=1,le=7),limit:int=Query(25,ge=1,le=50)):
         return discover_news_candidates(Finnhub(), days=days, limit=limit)
     except Exception as e:
         raise HTTPException(502,str(e))
+
+@app.get("/api/sentisense/{symbol}")
+def sentisense(symbol:str):
+    if not os.getenv("SENTISENSE_API_KEY"):
+        raise HTTPException(503,"SENTISENSE_API_KEY saknas")
+    result=get_sentiment(symbol.upper())
+    if result is None:
+        return {"ok":False,"symbol":symbol.upper(),"available":False,"reason":"Ingen SentiSense-data eller ingen täckning för symbolen"}
+    return {"ok":True,"available":True,"data":result}
 
 @app.head("/api/auto-scan")
 def auto_scan_head():
