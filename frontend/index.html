@@ -1,1 +1,133 @@
-<!doctype html><html lang="sv"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>TradePilot AI</title><link rel="stylesheet" href="style.css"></head><body><header><b>TradePilot AI</b><span id="status">Kontrollerar...</span></header><main><section class="hero"><div><small>TRADINGÖVERSIKT</small><h1>Enkel och tydlig</h1><p>Se marknadsläge, score, risk och de bästa kandidaterna utan onödigt brus.</p></div><button id="scan">Skanna marknaden</button></section><div id="summary" class="summary"></div><section><h2>Grafer</h2><div id="charts" class="charts"></div></section><section><h2>Bästa kandidater</h2><div id="results" class="cards"><div class="empty">Tryck på skanna för aktuell marknadsdata.</div></div></section><section class="chat"><h2>AI-tradern</h2><div id="messages"><div class="msg ai">Jag använder senaste TradePilot-scanningen som kontext och skiljer på egen score och externa källor.</div></div><form id="form"><input id="input" placeholder="T.ex. vilken kandidat har bäst risk/reward?"><button>Skicka</button></form></section></main><script src="app.js"></script></body></html>
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#080b12">
+  <title>TradePilot AI</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+  <div class="app">
+
+    <header class="topbar">
+      <div>
+        <div class="brand">TradePilot <span>AI</span></div>
+        <div class="subtitle">AI Small-Cap Intelligence</div>
+      </div>
+
+      <div class="status">
+        <span class="status-dot"></span>
+        <span id="systemStatus">LIVE</span>
+      </div>
+    </header>
+
+    <main>
+
+      <section class="hero">
+        <div>
+          <h1>Market Scanner</h1>
+          <p>
+            Småbolag, micro-caps, nyemissioner och nyhetsdrivna kandidater.
+          </p>
+        </div>
+
+        <button id="scanButton" class="primary-btn">
+          🔍 SCAN MARKNADEN
+        </button>
+      </section>
+
+      <section class="stats-grid">
+
+        <div class="stat-card">
+          <span>AKTIVA SIGNALER</span>
+          <strong id="signalCount">—</strong>
+        </div>
+
+        <div class="stat-card">
+          <span>HÖGSTA SCORE</span>
+          <strong id="highestScore">—</strong>
+        </div>
+
+        <div class="stat-card">
+          <span>SCANADE</span>
+          <strong id="scannedCount">—</strong>
+        </div>
+
+        <div class="stat-card">
+          <span>SENASTE SCAN</span>
+          <strong id="lastScan">—</strong>
+        </div>
+
+      </section>
+
+      <section class="scanner-panel">
+
+        <div class="panel-header">
+          <div>
+            <h2>TradePilot Opportunities</h2>
+            <p>Rankade efter TradePilot Score</p>
+          </div>
+
+          <div class="auto-status">
+            <span class="pulse"></span>
+            Auto-scan: 3 min
+          </div>
+        </div>
+
+        <div id="loading" class="loading hidden">
+          Analyserar marknaden...
+        </div>
+
+        <div id="error" class="error hidden"></div>
+
+        <div id="results" class="results">
+          <div class="empty">
+            <div class="empty-icon">📡</div>
+            <h3>Ingen scan körd ännu</h3>
+            <p>Tryck på SCAN MARKNADEN för att hitta kandidater.</p>
+          </div>
+        </div>
+
+      </section>
+
+      <section class="chat-panel">
+
+        <div class="panel-header">
+          <div>
+            <h2>🤖 TradePilot AI</h2>
+            <p>Fråga AI:n om marknaden</p>
+          </div>
+        </div>
+
+        <div id="chatMessages" class="chat-messages">
+          <div class="chat-message ai">
+            Hej! Jag är TradePilot AI. Fråga mig om en aktie,
+            en signal eller dagens marknad.
+          </div>
+        </div>
+
+        <div class="chat-input">
+          <input
+            id="chatInput"
+            type="text"
+            placeholder="Exempel: Vilken aktie har bäst momentum?"
+          >
+          <button id="chatButton">SKICKA</button>
+        </div>
+
+      </section>
+
+    </main>
+
+    <footer>
+      <span>TradePilot AI 2.0</span>
+      <span>Small-Cap Scanner • SEC • News • Finnhub</span>
+    </footer>
+
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
