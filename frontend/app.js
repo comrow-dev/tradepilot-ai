@@ -1,650 +1,132 @@
-const API_BASE = window.location.origin;
+const $ = id => document.getElementById(id);
+let busy = false;
 
-const scanButton = document.getElementById("scanButton");
-const resultsEl = document.getElementById("results");
-const loadingEl = document.getElementById("loading");
-const errorEl = document.getElementById("error");
+function fmt(n, d=2){ return Number(n||0).toFixed(d); }
 
-const signalCountEl = document.getElementById("signalCount");
-const highestScoreEl = document.getElementById("highestScore");
-const scannedCountEl = document.getElementById("scannedCount");
-const lastScanEl = document.getElementById("lastScan");
-
-const chatInput = document.getElementById("chatInput");
-const chatButton = document.getElementById("chatButton");
-const chatMessages = document.getElementById("chatMessages");
-
-let lastResults = [];
-let scanRunning = false;
-
-function showLoading(show) {
-  if (loadingEl) {
-    loadingEl.classList.toggle("hidden", !show);
-  }
-
-  if (scanButton) {
-    scanButton.disabled = show;
-    scanButton.textContent = show
-      ? "⏳ ANALYSERAR..."
-      : "🔍 SCAN MARKNADEN";
-  }
+function agentCard(a){
+  const load = Math.min(100, Number(a.load||0)*10);
+  return `<div class="agent-card">
+    <div class="agent-line">
+      <div class="agent-dot">${a.id.slice(0,2)}</div>
+      <div><b>${a.id}</b><small>${a.role}</small></div>
+      <span class="agent-status">● ${a.status}</span>
+    </div>
+    <div class="load"><span>Aktuell belastning</span><b>${a.load}/10</b></div>
+    <div class="loadbar"><i style="width:${load}%"></i></div>
+  </div>`;
 }
 
-function showError(message) {
-  if (!errorEl) return;
-
-  errorEl.textContent = message || "";
-  errorEl.classList.toggle("hidden", !message);
+function opportunity(x){
+  const cls = x.change_pct >= 0 ? "up" : "down";
+  const chips = (x.reasons||[]).map(r=>`<span class="chip">${r}</span>`).join("");
+  return `<article class="op-card">
+    <div class="op-top">
+      <div><div class="sym">${x.symbol}</div><div class="name">${x.name||""}</div></div>
+      <div class="score">${x.score}<small>/100</small></div>
+    </div>
+    <div class="price">$${fmt(x.price)} <span class="${cls}">${x.change_pct>=0?"+":""}${fmt(x.change_pct)}%</span></div>
+    <div class="chips">${chips}</div>
+    <div class="plan">
+      <div><span>ENTRY</span><b>$${fmt(x.trade_plan.entry)}</b></div>
+      <div><span>STOP</span><b>$${fmt(x.trade_plan.stop_loss)}</b></div>
+      <div><span>TARGET 1</span><b>$${fmt(x.trade_plan.target_1)}</b></div>
+      <div><span>R/R</span><b>${fmt(x.trade_plan.risk_reward)}x</b></div>
+    </div>
+  </article>`;
 }
 
-function formatNumber(value, decimals = 2) {
-  if (value === null || value === undefined || value === "") {
-    return "—";
-  }
+function activityRow(x){
+  const t = new Date(x.time*1000).toLocaleTimeString("sv-SE",{hour:"2-digit",minute:"2-digit"});
+  return `<div class="activity-row">
+    <div class="activity-top"><b>ATLAS</b><span>→</span><b>${x.agent}</b><span class="badge">${x.status}</span></div>
+    <div class="activity-task">${x.task}</div>
+    <div class="ticket">${x.id} • ${t}</div>
+  </div>`;
+}
 
-  const n = Number(value);
+async function loadAgents(){
+  const d = await (await fetch("/api/agents")).json();
+  if(d.ok) $("agents").innerHTML = d.agents.map(agentCard).join("");
+}
 
-  if (!Number.isFinite(n)) {
-    return String(value);
-  }
+async function loadActivity(){
+  const d = await (await fetch("/api/activity")).json();
+  if(d.ok) $("activity").innerHTML = d.items.map(activityRow).join("");
+}
 
-  return n.toLocaleString("sv-SE", {
-    minimumFractionDigits: decimals,
-    maximumFractionDigits: decimals
+function scanParams(){
+  return new URLSearchParams({
+    limit: 25,
+    min_price: .5,
+    max_price: $("maxPrice").value,
+    min_market_cap_m: 2,
+    max_market_cap_m: $("maxCap").value,
+    min_score: $("minScore").value
   });
 }
 
-function getScore(item) {
-  const n = Number(item?.score);
-  return Number.isFinite(n) ? n : 0;
-}
-
-function getTicker(item) {
-  return (
-    item?.symbol ||
-    item?.ticker ||
-    item?.ticker_symbol ||
-    item?.name ||
-    "UNKNOWN"
-  );
-}
-
-function getName(item) {
-  return (
-    item?.company_name ||
-    item?.company ||
-    item?.name ||
-    item?.companyName ||
-    getTicker(item)
-  );
-}
-
-function getPrice(item) {
-  return (
-    item?.price ??
-    item?.current_price ??
-    item?.currentPrice ??
-    item?.close
-  );
-}
-
-function getChange(item) {
-  return (
-    item?.change_pct ??
-    item?.change_percent ??
-    item?.changePercent ??
-    item?.percent_change ??
-    item?.gain
-  );
-}
-
-function getVolume(item) {
-  return (
-    item?.volume ??
-    item?.current_volume ??
-    item?.avg_volume
-  );
-}
-
-function getMarketCap(item) {
-  return (
-    item?.market_cap ??
-    item?.market_cap_m ??
-    item?.marketCap ??
-    item?.market_capitalization
-  );
-}
-
-function getSignal(item) {
-  return item?.signal || "ÖVERVÄG";
-}
-
-function getRisk(item) {
-  return item?.risk || "—";
-}
-
-function escapeHtml(value) {
-  return String(value ?? "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#039;");
-}
-
-function renderResults(items) {
-  if (!resultsEl) return;
-
-  if (!Array.isArray(items) || items.length === 0) {
-    resultsEl.innerHTML = `
-      <div class="empty">
-        <div class="empty-icon">📡</div>
-        <h3>Inga kandidater hittades</h3>
-        <p>
-          Scanningen kördes, men inga aktier klarade filtren just nu.
-        </p>
-      </div>
-    `;
-
-    return;
-  }
-
-  const sorted = [...items].sort(
-    (a, b) => getScore(b) - getScore(a)
-  );
-
-  lastResults = sorted;
-
-  resultsEl.innerHTML = sorted
-    .map((item, index) => {
-      const score = getScore(item);
-      const ticker = getTicker(item);
-      const name = getName(item);
-      const price = getPrice(item);
-      const change = getChange(item);
-      const volume = getVolume(item);
-      const marketCap = getMarketCap(item);
-      const signal = getSignal(item);
-      const risk = getRisk(item);
-
-      const reasons = Array.isArray(item?.reasons)
-        ? item.reasons
-        : [];
-
-      const tradePlan = item?.trade_plan || {};
-
-      const entry =
-        tradePlan?.entry ??
-        tradePlan?.entry_price;
-
-      const stop =
-        tradePlan?.stop ??
-        tradePlan?.stop_loss;
-
-      const target =
-        tradePlan?.target ??
-        tradePlan?.take_profit;
-
-      const changeText =
-        change === null ||
-        change === undefined ||
-        change === ""
-          ? "—"
-          : `${Number(change) >= 0 ? "+" : ""}${formatNumber(change)}%`;
-
-      const reasonHtml = reasons.length
-        ? reasons
-            .slice(0, 4)
-            .map(
-              reason =>
-                `<span>• ${escapeHtml(reason)}</span>`
-            )
-            .join("")
-        : `<span>• Ingen ytterligare förklaring tillgänglig</span>`;
-
-      return `
-        <article class="card opportunity-card">
-
-          <div class="top">
-
-            <div>
-              <div class="ticker">
-                ${escapeHtml(ticker)}
-              </div>
-
-              <div class="muted">
-                ${escapeHtml(name)}
-              </div>
-            </div>
-
-            <div style="text-align:right">
-
-              <div class="gain">
-                ${escapeHtml(changeText)}
-              </div>
-
-              <div class="muted">
-                ${escapeHtml(signal)}
-              </div>
-
-            </div>
-
-          </div>
-
-          <div class="metrics">
-
-            <div class="metric">
-              <small>PRIS</small>
-              ${price == null ? "—" : formatNumber(price)}
-            </div>
-
-            <div class="metric">
-              <small>VOLUME</small>
-              ${volume == null ? "—" : formatNumber(volume, 0)}
-            </div>
-
-            <div class="metric">
-              <small>MARKET CAP</small>
-              ${
-                marketCap == null
-                  ? "—"
-                  : formatNumber(marketCap, 0)
-              }
-            </div>
-
-            <div class="metric">
-              <small>RISK</small>
-              ${escapeHtml(risk)}
-            </div>
-
-          </div>
-
-          <div class="scoreline">
-
-            <div class="scoreline-head">
-
-              <span>
-                TRADEPILOT SCORE
-              </span>
-
-              <strong>
-                ${formatNumber(score, 0)}/100
-              </strong>
-
-            </div>
-
-            <div class="scorebg">
-
-              <div
-                class="scorefill"
-                style="width:${Math.max(
-                  0,
-                  Math.min(100, score)
-                )}%"
-              ></div>
-
-            </div>
-
-          </div>
-
-          <div class="expert">
-
-            <b>
-              ${escapeHtml(signal)}
-              · Kandidat #${index + 1}
-            </b>
-
-            ${reasonHtml}
-
-            ${
-              entry != null ||
-              stop != null ||
-              target != null
-                ? `
-                  <span>
-                    Entry:
-                    ${
-                      entry == null
-                        ? "—"
-                        : escapeHtml(
-                            formatNumber(entry)
-                          )
-                    }
-                  </span>
-
-                  <span>
-                    Stop:
-                    ${
-                      stop == null
-                        ? "—"
-                        : escapeHtml(
-                            formatNumber(stop)
-                          )
-                    }
-                  </span>
-
-                  <span>
-                    Target:
-                    ${
-                      target == null
-                        ? "—"
-                        : escapeHtml(
-                            formatNumber(target)
-                          )
-                    }
-                  </span>
-                `
-                : ""
-            }
-
-          </div>
-
-        </article>
-      `;
-    })
-    .join("");
-}
-
-function updateStats(items, payload) {
-  const list = Array.isArray(items)
-    ? items
-    : [];
-
-  const scores = list
-    .map(getScore)
-    .filter(Number.isFinite);
-
-  const highest = scores.length
-    ? Math.max(...scores)
-    : 0;
-
-  const activeSignals = list.filter(item => {
-    const signal = String(
-      getSignal(item)
-    ).toUpperCase();
-
-    return (
-      signal !== "AVVAKTA" &&
-      signal !== "NEUTRAL"
-    );
-  }).length;
-
-  if (signalCountEl) {
-    signalCountEl.textContent =
-      activeSignals;
-  }
-
-  if (highestScoreEl) {
-    highestScoreEl.textContent =
-      highest
-        ? `${formatNumber(highest, 0)}/100`
-        : "—";
-  }
-
-  const scanned =
-    payload?.scanned ??
-    payload?.scanned_count ??
-    payload?.count ??
-    list.length;
-
-  if (scannedCountEl) {
-    scannedCountEl.textContent =
-      formatNumber(scanned, 0);
-  }
-
-  if (lastScanEl) {
-    lastScanEl.textContent =
-      new Date().toLocaleTimeString(
-        "sv-SE",
-        {
-          hour: "2-digit",
-          minute: "2-digit"
-        }
-      );
-  }
-}
-
-async function scanMarket() {
-  if (scanRunning) return;
-
-  scanRunning = true;
-
-  showLoading(true);
-  showError("");
-
-  try {
-    const response = await fetch(
-      `${API_BASE}/api/scan?limit=50`,
-      {
-        method: "GET",
-        headers: {
-          "Accept": "application/json"
-        },
-        cache: "no-store"
-      }
-    );
-
-    const text =
-      await response.text();
-
-    let data;
-
-    try {
-      data = JSON.parse(text);
-    } catch {
-      throw new Error(
-        `Servern returnerade ett ogiltigt svar (${response.status}).`
-      );
+async function scan(){
+  if(busy) return;
+  busy = true;
+  $("message").textContent = "ATLAS samordnar scan…";
+  $("progressBar").style.width = "20%";
+  $("progressText").textContent = "20%";
+  try{
+    const d = await (await fetch("/api/scan?"+scanParams())).json();
+    if(!d.ok){
+      $("message").innerHTML = `<span class="error">${d.error}</span>`;
+      $("results").innerHTML = "";
+      $("dataState").textContent = "SAKNAS";
+      return;
     }
-
-    if (
-      !response.ok ||
-      data?.ok === false
-    ) {
-      throw new Error(
-        data?.detail ||
-        `Scan misslyckades (${response.status}).`
-      );
-    }
-
-    const items =
-      Array.isArray(data?.results)
-        ? data.results
-        : Array.isArray(data)
-          ? data
-          : [];
-
-    renderResults(items);
-    updateStats(items, data);
-
-  } catch (error) {
-
-    console.error(
-      "TradePilot scan error:",
-      error
-    );
-
-    showError(
-      `Kunde inte genomföra scan: ${
-        error.message || "okänt fel"
-      }`
-    );
-
-  } finally {
-
-    scanRunning = false;
-    showLoading(false);
+    const max = d.results.length ? Math.max(...d.results.map(x=>x.score)) : 0;
+    $("candidateCount").textContent = d.results.length;
+    $("highestScore").textContent = max || "—";
+    $("dataState").textContent = "LIVE";
+    $("lastScan").textContent = "Senast "+new Date(d.timestamp).toLocaleTimeString("sv-SE",{hour:"2-digit",minute:"2-digit"});
+    $("message").textContent = d.results.length ? `${d.results.length} kandidater kvalificerade.` : "Ingen kandidat klarade filtret.";
+    $("results").innerHTML = d.results.map(opportunity).join("");
+    $("progressBar").style.width = "100%";
+    $("progressText").textContent = "100%";
+    $("headline").textContent = d.results.length
+      ? `ATLAS har prioriterat ${d.results.length} kandidater. Högsta score: ${max}/100.`
+      : "Scanner klar. Inga kandidater passerade dagens filter.";
+  }catch(e){
+    $("message").innerHTML = `<span class="error">Backend-fel: ${e.message}</span>`;
+  }finally{
+    busy = false;
   }
 }
 
-function addChatMessage(
-  text,
-  type = "ai"
-) {
-  if (!chatMessages) return;
-
-  const div =
-    document.createElement("div");
-
-  div.className =
-    `chat-message ${type}`;
-
-  div.textContent = text;
-
-  chatMessages.appendChild(div);
-
-  chatMessages.scrollTop =
-    chatMessages.scrollHeight;
-}
-
-async function askAI() {
-  const question =
-    chatInput?.value?.trim();
-
-  if (!question) return;
-
-  addChatMessage(
-    question,
-    "user"
-  );
-
-  chatInput.value = "";
-
-  if (chatButton) {
-    chatButton.disabled = true;
-    chatButton.textContent =
-      "SKICKAR...";
-  }
-
-  try {
-
-    const response =
-      await fetch(
-        `${API_BASE}/api/chat`,
-        {
-          method: "POST",
-
-          headers: {
-            "Content-Type":
-              "application/json",
-
-            "Accept":
-              "application/json"
-          },
-
-          body: JSON.stringify({
-            message: question,
-            question,
-
-            context: {
-              results: lastResults
-            }
-          })
-        }
-      );
-
-    const text =
-      await response.text();
-
-    let data;
-
-    try {
-      data = JSON.parse(text);
-    } catch {
-      throw new Error(
-        "Ogiltigt svar från AI-servern."
-      );
-    }
-
-    if (!response.ok) {
-      throw new Error(
-        data?.detail ||
-        `Chat-fel (${response.status}).`
-      );
-    }
-
-    const answer =
-      data?.answer ||
-      data?.response ||
-      data?.message ||
-      data?.text;
-
-    if (!answer) {
-      throw new Error(
-        "AI-servern skickade inget svar."
-      );
-    }
-
-    addChatMessage(
-      answer,
-      "ai"
-    );
-
-  } catch (error) {
-
-    console.error(
-      "TradePilot chat error:",
-      error
-    );
-
-    addChatMessage(
-      `Jag kunde inte svara just nu. ${
-        error.message ||
-        "Kontrollera att /api/chat finns i backend."
-      }`,
-      "ai"
-    );
-
-  } finally {
-
-    if (chatButton) {
-      chatButton.disabled = false;
-      chatButton.textContent =
-        "SKICKA";
-    }
+async function health(){
+  try{
+    const d = await (await fetch("/api/health")).json();
+    $("status").textContent = d.market_data ? "LIVE" : "API KEY SAKNAS";
+    $("sideStatus").textContent = d.market_data ? "Market data online" : "API key saknas";
+    $("dataState").textContent = d.market_data ? "LIVE" : "—";
+  }catch(e){
+    $("status").textContent = "OFFLINE";
+    $("sideStatus").textContent = "Backend offline";
   }
 }
 
-if (scanButton) {
-  scanButton.addEventListener(
-    "click",
-    scanMarket
-  );
-}
+$("scanBtn").onclick = scan;
+$("refreshBtn").onclick = async()=>{ await loadAgents(); await loadActivity(); await health(); await scan(); };
+$("askBtn").onclick = async()=>{
+  const q = $("question").value.trim();
+  if(!q) return;
+  $("answer").textContent = "ATLAS analyserar…";
+  try{
+    const d = await (await fetch("/api/ask?question="+encodeURIComponent(q),{method:"POST"})).json();
+    $("answer").textContent = d.answer || "Inget svar.";
+  }catch(e){ $("answer").textContent = "AI-fel: "+e.message; }
+};
 
-if (chatButton) {
-  chatButton.addEventListener(
-    "click",
-    askAI
-  );
-}
-
-if (chatInput) {
-  chatInput.addEventListener(
-    "keydown",
-    event => {
-      if (event.key === "Enter") {
-        event.preventDefault();
-        askAI();
-      }
-    }
-  );
-}
-
-// Automatisk scanning var 3:e minut.
-setInterval(
-  () => {
-    if (!document.hidden) {
-      scanMarket();
-    }
-  },
-  3 * 60 * 1000
-);
-
-// Första scan när sidan laddas.
-document.addEventListener(
-  "DOMContentLoaded",
-  () => {
-    scanMarket();
-  }
-);
+(async()=>{
+  await health();
+  await loadAgents();
+  await loadActivity();
+  await scan();
+  setInterval(scan, 180000);
+  setInterval(loadActivity, 30000);
+})();
