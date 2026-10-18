@@ -1,41 +1,31 @@
-# TradePilot AI
+# TradePilot AI 4.0
 
-TradePilot är en egen trading- och beslutsmotor med målet att hitta mätbar riskjusterad edge.
+En komplett Render-klar version med en Command Center-dashboard inspirerad av agentgränssnittet du visade.
 
-## Kärna
-- Finnhub marknadsdata
-- teknisk analys och multi-timeframe
-- marknadsregim och sektorstyrka
-- fundamenta, nyheter, analytiker- och insiderdata
-- Daytrading.se som separat extern informationskälla
-- egen 0–100 scoring + confidence
-- ATR-baserad risk/reward
-- signalhistorik i SQLite
-- backtest med modellerad spread, slippage och courtage
-- riktig rolling walk-forward/OOS med parametertröskel vald enbart på träningsdelen
-- SEC EDGAR-verifiering som separat officiell datakälla
-- cachning av Daytrading.se-källan för att minska onödiga upprepade hämtningar
-- API för att stänga och följa upp signaler
+## Funktioner
+- ATLAS som samordnande AI-agent
+- 7 specialistagenter: NOVA, ORION, SPECTRA, HUNTER, VECTOR, SCOUT, CLOSER
+- Agentstatus och arbetsbelastning
+- ATLAS aktivitets-/uppgiftslogg
+- Small-cap scanner via Finnhub
+- TradePilot Score 0–100
+- Entry, stop-loss, target 1 och risk/reward
+- AI-frågor via OpenAI Responses API
+- Automatisk scanning var 3:e minut när dashboarden är öppen
+- `/` serverar frontend direkt från FastAPI så att Render inte hamnar på `Not Found`
+- Render health check på `/api/health`
 
-## Viktig princip
-Vi lägger inte till funktioner bara för att de låter bra. En faktor ska kunna mätas mot historiska resultat och helst överleva out-of-sample-testning innan den får större vikt i modellen.
+## Render
+Build Command:
+`pip install -r backend/requirements.txt`
 
-Backtesten är en valideringsmotor, inte ett löfte om framtida avkastning.
+Start Command:
+`uvicorn backend.main:app --host 0.0.0.0 --port $PORT`
 
-## Start
-```bash
-pip install -r backend/requirements.txt
-uvicorn backend.main:app --host 0.0.0.0 --port 8000
-```
+Environment:
+- `FINNHUB_API_KEY` = din Finnhub-nyckel
+- `OPENAI_API_KEY` = valfri OpenAI-nyckel
+- `OPENAI_MODEL` = valfri modell, standard `gpt-5-mini`
 
-Miljövariabler:
-- `FINNHUB_API_KEY`
-- `OPENAI_API_KEY`
-- `OPENAI_MODEL`
-- `DAYTRADING_SOURCE_URL`
-- `TRADEPILOT_DB`
-- `TRADEPILOT_COMMISSION_PCT` (per sida, standard 0.02%)
-- `TRADEPILOT_SLIPPAGE_PCT` (per sida, standard 0.05%)
-- `TRADEPILOT_SPREAD_PCT` (round-trip, standard 0.05%)
-- `TRADEPILOT_UNIVERSE_LIMIT` (standard 500)
-- `SEC_USER_AGENT` (rekommenderas: identifiera app + kontakt vid SEC-anrop)
+## Viktigt
+Detta är ett analysverktyg, inte personlig investeringsrådgivning. Score och trade-plan är heuristiska signaler och ska verifieras mot aktuell marknadsdata.
